@@ -86,6 +86,26 @@ function fileToArtDataURL(file, removeBg, max = 512) {
   })
 }
 
+// Load a data URL, scale + remove background + crop, return a compact webp.
+function dataUrlToProcessed(url, removeBg) {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      const max = 512
+      const scale = Math.min(1, max / Math.max(img.width, img.height))
+      const c = document.createElement('canvas')
+      c.width = Math.max(1, Math.round(img.width * scale))
+      c.height = Math.max(1, Math.round(img.height * scale))
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height)
+      let out = c
+      try { out = processImage(c, removeBg) } catch {}
+      resolve(out.toDataURL('image/webp', 0.9))
+    }
+    img.onerror = () => resolve(url)
+    img.src = url
+  })
+}
+
 // A tiny self-animating canvas that shows a character idling (blinking, bobbing).
 // `speaking` makes the mouth move so the selected character looks "live".
 function CharacterPreview({ name, speaking }) {
@@ -133,6 +153,9 @@ export default function Home() {
   const [use3D, setUse3D] = useState(false)
   const [artwork, setArtwork] = useState({})
   const [removeBg, setRemoveBg] = useState(true)
+  const [genOutfit, setGenOutfit] = useState('')
+  const [genBusy, setGenBusy] = useState('')
+  const [genMsg, setGenMsg] = useState('')
   const [analysis, setAnalysis] = useState(null)
   const [analysisError, setAnalysisError] = useState('')
 
@@ -176,6 +199,40 @@ export default function Home() {
       delete next[name]
       return next
     })
+  }
+
+  // Paid AI: from the "Normal" picture, auto-create expression variations.
+  const generateExpressions = async (name) => {
+    const base = artwork[name]?.base
+    if (!base) {
+      setGenMsg(`Upload a "Normal" picture for ${name} first.`)
+      return
+    }
+    setGenBusy(name)
+    setGenMsg(`Generating expressions for ${name}… (this takes ~30s and costs a few cents)`)
+    try {
+      const res = await fetch('/api/generate-expressions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: base, outfit: genOutfit }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setGenMsg(data.message || 'Generation failed.')
+        setGenBusy('')
+        return
+      }
+      const processed = {}
+      for (const slot of Object.keys(data.results || {})) {
+        processed[slot] = await dataUrlToProcessed(data.results[slot], true)
+      }
+      setArtwork((prev) => ({ ...prev, [name]: { ...(prev[name] || {}), ...processed } }))
+      const failed = data.errors?.length ? ` (${data.errors.length} failed)` : ''
+      setGenMsg(`✅ Generated ${Object.keys(processed).length} expressions for ${name}!${failed}`)
+    } catch (e) {
+      setGenMsg('Generation error: ' + e.message)
+    }
+    setGenBusy('')
   }
 
   const handleAnalyzeStory = async () => {
@@ -355,9 +412,33 @@ export default function Home() {
                 />
                 <span>Remove background automatically (upload after toggling)</span>
               </label>
+
+              <p className={styles.hint}>
+                ✨ <strong>AI expressions (paid):</strong> upload just the
+                “Normal” picture, then click <strong>AI</strong> to auto-create
+                all the other expressions of the same character. Needs
+                GEMINI_API_KEY on Render (~$0.50 per character). Optional outfit:
+              </p>
+              <input
+                type="text"
+                className={styles.input}
+                placeholder="Optional outfit/style, e.g. red festive sari"
+                value={genOutfit}
+                onChange={(e) => setGenOutfit(e.target.value)}
+              />
+              {genMsg && <p className={styles.hint}>{genMsg}</p>}
+
               {characters.map((char) => (
                 <div key={char.name} className={styles.artRow}>
                   <span className={styles.artName}>{char.name}</span>
+                  <button
+                    type="button"
+                    className={styles.artBtn}
+                    disabled={genBusy === char.name}
+                    onClick={() => generateExpressions(char.name)}
+                  >
+                    {genBusy === char.name ? '… AI' : '✨ AI'}
+                  </button>
                   {ART_SLOTS.map((slot) => (
                     <label
                       key={slot.key}
