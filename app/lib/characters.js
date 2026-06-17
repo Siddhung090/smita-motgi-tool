@@ -457,7 +457,7 @@ export const ACTIONS = [
 // or 'reactor' (the partner responding). `facing` is +1 if the partner is to
 // the right of this character, -1 if to the left. Arm rotations: raising the
 // LEFT arm is a positive angle, the RIGHT arm a negative angle.
-function computePose(action, role, lt, t, mouth, emotion, facing) {
+export function computePose(action, role, lt, t, mouth, emotion, facing) {
   const idle = Math.sin(t * 6) * (0.07 + mouth * 0.2)
   const pose = { dx: 0, dy: 0, lean: 0, squash: 0, armL: idle, armR: -idle, turnAway: false, fx: [], emotion }
   const nearRight = facing > 0

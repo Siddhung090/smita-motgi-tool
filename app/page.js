@@ -49,6 +49,7 @@ export default function Home() {
   const [videoGenerated, setVideoGenerated] = useState(false)
   const [videos, setVideos] = useState([])
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [use3D, setUse3D] = useState(false)
   const [analysis, setAnalysis] = useState(null)
   const [analysisError, setAnalysisError] = useState('')
 
@@ -112,6 +113,7 @@ export default function Home() {
         character: characterName,
         canvas: canvasRef.current,
         onStatus: setStatusMessage,
+        mode: use3D ? '3d' : '2d',
       })
 
       const url = URL.createObjectURL(blob)
@@ -213,6 +215,15 @@ export default function Home() {
                 ))}
               </div>
             </div>
+
+            <label className={styles.toggleRow}>
+              <input
+                type="checkbox"
+                checked={use3D}
+                onChange={(e) => setUse3D(e.target.checked)}
+              />
+              <span>🧊 3D mode (beta) — render characters in 3D</span>
+            </label>
 
             <button
               onClick={handleAnalyzeStory}

@@ -155,7 +155,7 @@ function buildScenes(scenes, script, mainName, partnerName) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-export async function createTalkingVideo({ script, scenes, character, canvas, onStatus }) {
+export async function createTalkingVideo({ script, scenes, character, canvas, onStatus, mode }) {
   if (typeof window === 'undefined') throw new Error('Must run in the browser.')
   const AudioCtx = window.AudioContext || window.webkitAudioContext
   if (!AudioCtx || typeof MediaRecorder === 'undefined' || !canvas.captureStream) {
@@ -205,6 +205,18 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
   const W = canvas.width
   const H = canvas.height
 
+  // Optional 3D stage. If it fails to initialise we silently fall back to 2D.
+  let scene3d = null
+  if (mode === '3d') {
+    try {
+      if (onStatus) onStatus('Loading 3D stage...')
+      const { createScene3D } = await import('./scene3d')
+      scene3d = await createScene3D(W, H, mainCfg, partnerCfg)
+    } catch (e) {
+      scene3d = null
+    }
+  }
+
   // 3. Combine canvas video + TTS audio into one stream and record.
   const canvasStream = canvas.captureStream(30)
   const mixed = new MediaStream([
@@ -237,15 +249,28 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
     const mainSpeaks = sc.speaker === 'main' || sc.speaker === 'both'
     const partnerSpeaks = sc.speaker === 'partner' || sc.speaker === 'both'
 
-    // Two characters; the speaker performs the scene action, the other reacts.
-    drawCharacter(ctx, mainCfg, {
-      cx: W * 0.32, cy: H * 0.4, t, mouth: mainSpeaks ? speakMouth : 0, scale: 0.62,
-      emotion: sc.emotion, action: sc.action, lt, role: mainSpeaks ? 'actor' : 'reactor', facing: 1,
-    })
-    drawCharacter(ctx, partnerCfg, {
-      cx: W * 0.68, cy: H * 0.4, t: t + 1.3, mouth: partnerSpeaks ? speakMouth : 0, scale: 0.62,
-      emotion: sc.emotion, action: sc.action, lt, role: partnerSpeaks ? 'actor' : 'reactor', facing: -1,
-    })
+    if (scene3d) {
+      // 3D characters rendered on a transparent canvas, composited over the
+      // painted 2D background.
+      scene3d.frame({
+        t, lt, action: sc.action, emotion: sc.emotion,
+        mainMouth: mainSpeaks ? speakMouth : 0,
+        partnerMouth: partnerSpeaks ? speakMouth : 0,
+        mainRole: mainSpeaks ? 'actor' : 'reactor',
+        partnerRole: partnerSpeaks ? 'actor' : 'reactor',
+      })
+      ctx.drawImage(scene3d.canvas, 0, 0, W, H)
+    } else {
+      // Two flat characters; the speaker performs the action, the other reacts.
+      drawCharacter(ctx, mainCfg, {
+        cx: W * 0.32, cy: H * 0.4, t, mouth: mainSpeaks ? speakMouth : 0, scale: 0.62,
+        emotion: sc.emotion, action: sc.action, lt, role: mainSpeaks ? 'actor' : 'reactor', facing: 1,
+      })
+      drawCharacter(ctx, partnerCfg, {
+        cx: W * 0.68, cy: H * 0.4, t: t + 1.3, mouth: partnerSpeaks ? speakMouth : 0, scale: 0.62,
+        emotion: sc.emotion, action: sc.action, lt, role: partnerSpeaks ? 'actor' : 'reactor', facing: -1,
+      })
+    }
 
     if (sc.prop && sc.prop !== 'none') drawProp(ctx, sc.prop, { cx: W * 0.5, cy: H * 0.26, t, scale: 0.9 })
 
@@ -311,6 +336,7 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
   recorder.stop()
   await stopped
   await audioCtx.close()
+  if (scene3d) scene3d.dispose()
 
   return new Blob(recorded, { type: recorder.mimeType || 'video/webm' })
 }
