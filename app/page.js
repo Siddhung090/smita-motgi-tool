@@ -1,8 +1,42 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import styles from './page.module.css'
 import { createTalkingVideo } from './lib/talkingVideo'
+import { CHARACTERS, getCharacter, drawBackground, drawCharacter } from './lib/characters'
+
+// A tiny self-animating canvas that shows a character idling (blinking, bobbing).
+// `speaking` makes the mouth move so the selected character looks "live".
+function CharacterPreview({ name, speaking }) {
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const canvas = ref.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    const cfg = getCharacter(name)
+    const start = performance.now()
+    let raf
+
+    const loop = () => {
+      const t = (performance.now() - start) / 1000
+      const mouth = speaking ? 0.4 + Math.sin(t * 10) * 0.35 : 0
+      drawBackground(ctx, canvas.width, canvas.height, t, cfg.cheek + '55')
+      drawCharacter(ctx, cfg, {
+        cx: canvas.width / 2,
+        cy: canvas.height * 0.34,
+        t,
+        mouth: Math.max(0, mouth),
+        scale: 0.5,
+      })
+      raf = requestAnimationFrame(loop)
+    }
+    loop()
+    return () => cancelAnimationFrame(raf)
+  }, [name, speaking])
+
+  return <canvas ref={ref} width={140} height={130} className={styles.previewCanvas} />
+}
 
 export default function Home() {
   const canvasRef = useRef(null)
@@ -18,12 +52,10 @@ export default function Home() {
   const [analysis, setAnalysis] = useState(null)
   const [analysisError, setAnalysisError] = useState('')
 
-  const characters = [
-    { name: 'Dudu', color: '#FF6B6B', emoji: '🎭' },
-    { name: 'Bubu', color: '#4ECDC4', emoji: '🎪' },
-    { name: 'Momo', color: '#FFE66D', emoji: '✨' },
-    { name: 'Zara', color: '#95E1D3', emoji: '🌟' },
-  ]
+  const characters = Object.keys(CHARACTERS).map((name) => ({
+    name,
+    ...CHARACTERS[name],
+  }))
 
   const handleAnalyzeStory = async () => {
     if (!textContent.trim()) {
@@ -70,16 +102,13 @@ export default function Home() {
       return
     }
 
-    const char = characters.find((c) => c.name === characterName) || characters[0]
-
     setIsGenerating(true)
     setStatusMessage('Preparing...')
 
     try {
       const blob = await createTalkingVideo({
         script,
-        emoji: char.emoji,
-        color: char.color,
+        character: characterName,
         canvas: canvasRef.current,
         onStatus: setStatusMessage,
       })
@@ -166,15 +195,18 @@ export default function Home() {
                       characterName === char.name ? styles.active : ''
                     }`}
                     style={{
-                      borderColor: char.color,
+                      borderColor: char.cheek,
                       backgroundColor:
                         characterName === char.name
-                          ? char.color + '20'
+                          ? char.cheek + '22'
                           : 'transparent',
                     }}
                     onClick={() => setCharacterName(char.name)}
                   >
-                    <span className={styles.emoji}>{char.emoji}</span>
+                    <CharacterPreview
+                      name={char.name}
+                      speaking={characterName === char.name}
+                    />
                     <span>{char.name}</span>
                   </button>
                 ))}

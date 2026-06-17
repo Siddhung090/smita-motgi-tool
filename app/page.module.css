@@ -128,6 +128,13 @@
   margin-bottom: 0.5rem;
 }
 
+.previewCanvas {
+  width: 100px;
+  height: 92px;
+  margin-bottom: 0.35rem;
+  border-radius: 10px;
+}
+
 .generateButton {
   width: 100%;
   padding: 1rem;

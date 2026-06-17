@@ -3,6 +3,8 @@
 // the character on a canvas in sync with the audio, and records the canvas +
 // audio to a downloadable WebM with MediaRecorder.
 
+import { getCharacter, drawBackground, drawCharacter } from './characters'
+
 // Split a script into chunks that fit the free TTS length limit, breaking on
 // sentence boundaries where possible.
 function splitIntoChunks(text, max = 180) {
@@ -63,7 +65,18 @@ function wrapText(ctx, text, maxWidth) {
   return lines
 }
 
-export async function createTalkingVideo({ script, emoji, color, canvas, onStatus }) {
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.arcTo(x + w, y, x + w, y + h, r)
+  ctx.arcTo(x + w, y + h, x, y + h, r)
+  ctx.arcTo(x, y + h, x, y, r)
+  ctx.arcTo(x, y, x + w, y, r)
+  ctx.closePath()
+}
+
+export async function createTalkingVideo({ script, character, canvas, onStatus }) {
+  const cfg = getCharacter(character)
   if (typeof window === 'undefined') throw new Error('Must run in the browser.')
   const AudioCtx = window.AudioContext || window.webkitAudioContext
   if (!AudioCtx || typeof MediaRecorder === 'undefined' || !canvas.captureStream) {
@@ -120,48 +133,36 @@ export async function createTalkingVideo({ script, emoji, color, canvas, onStatu
   let caption = ''
   let mouth = 0
   let rafId = null
+  const start = performance.now()
   const draw = () => {
+    const t = (performance.now() - start) / 1000
+
+    // Smooth the audio level so the mouth glides instead of jittering.
     analyser.getByteFrequencyData(freq)
     const avg = freq.reduce((a, b) => a + b, 0) / freq.length
-    mouth = avg / 255
+    mouth = mouth * 0.55 + (avg / 255) * 0.45
 
-    const grad = ctx.createLinearGradient(0, 0, W, H)
-    grad.addColorStop(0, '#667eea')
-    grad.addColorStop(1, '#764ba2')
-    ctx.fillStyle = grad
-    ctx.fillRect(0, 0, W, H)
+    // Soft pastel background, tinted toward the character's cheek colour.
+    drawBackground(ctx, W, H, t, cfg.cheek + '55')
 
-    // Character circle
-    const cx = W / 2
-    const cy = H / 2 - 30
-    const r = 90
-    ctx.beginPath()
-    ctx.arc(cx, cy, r + mouth * 12, 0, Math.PI * 2)
-    ctx.fillStyle = (color || '#FF6B6B') + '33'
-    ctx.fill()
-    ctx.lineWidth = 4
-    ctx.strokeStyle = color || '#FF6B6B'
-    ctx.stroke()
+    // The animated character (head centred a little above middle).
+    drawCharacter(ctx, cfg, { cx: W / 2, cy: H * 0.34, t, mouth, scale: 0.92 })
 
-    // Emoji face (bobs slightly while speaking)
-    ctx.font = '90px serif'
-    ctx.textAlign = 'center'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(emoji || '🎭', cx, cy - mouth * 6)
-
-    // Mouth (grows with volume)
-    ctx.beginPath()
-    ctx.ellipse(cx, cy + 55, 22, 8 + mouth * 26, 0, 0, Math.PI * 2)
-    ctx.fillStyle = '#2d3748'
-    ctx.fill()
-
-    // Caption
+    // Caption with a soft rounded backdrop for readability.
     if (caption) {
-      ctx.font = '22px sans-serif'
-      ctx.fillStyle = 'white'
-      const lines = wrapText(ctx, caption, W - 80)
-      const startY = H - 30 - (lines.length - 1) * 28
-      lines.forEach((ln, i) => ctx.fillText(ln, cx, startY + i * 28))
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'alphabetic'
+      ctx.font = 'bold 22px sans-serif'
+      const lines = wrapText(ctx, caption, W - 100)
+      const lineH = 30
+      const boxH = lines.length * lineH + 16
+      const boxY = H - boxH - 16
+      ctx.fillStyle = 'rgba(255,255,255,0.82)'
+      roundRect(ctx, 40, boxY, W - 80, boxH, 16)
+      ctx.fill()
+      ctx.fillStyle = '#5a4a6a'
+      const startY = boxY + 30
+      lines.forEach((ln, i) => ctx.fillText(ln, W / 2, startY + i * lineH))
     }
 
     rafId = requestAnimationFrame(draw)
