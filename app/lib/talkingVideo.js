@@ -100,7 +100,7 @@ const EMOTION_SLOT = { happy: 'happy', excited: 'happy', love: 'love', sad: 'sad
 // In one-photo mode, the emotion always adds a floating cue so the face reacts.
 const EMO_FX = { sad: 'tears', angry: 'anger', love: 'hearts', happy: 'sparkle', excited: 'sparkle', surprised: 'exclaim', sleepy: 'zzz' }
 
-function drawArtworkChar(ctx, imgs, pose, { cx, baselineY, targetH, mouth, emotion, action, t }) {
+function drawArtworkChar(ctx, imgs, pose, { cx, baselineY, maxW, maxH, mouth, emotion, action, t }) {
   let im = imgs.base
   const es = EMOTION_SLOT[emotion]
   if (es && imgs[es]) im = imgs[es]
@@ -111,7 +111,10 @@ function drawArtworkChar(ctx, imgs, pose, { cx, baselineY, targetH, mouth, emoti
   if (speaking && imgs.talk) im = imgs.talk
   if (!im) { for (const k in imgs) { im = imgs[k]; break } }
   if (!im || !im.height) return
-  const w = (im.width / im.height) * targetH
+  // Fit the image inside a box (both width and height) so wide or boxy images
+  // never blow up or overlap the other character.
+  const s = Math.min(maxH / im.height, maxW / im.width)
+  const w = im.width * s, h = im.height * s
   // If there is no dedicated "talking" image, give a single photo a small
   // squash-bob while speaking so it reads as talking.
   const talkBob = speaking && !imgs.talk ? 1 + Math.sin(t * 26) * 0.025 * (0.5 + mouth) : 1
@@ -120,7 +123,7 @@ function drawArtworkChar(ctx, imgs, pose, { cx, baselineY, targetH, mouth, emoti
   ctx.rotate(-pose.lean)
   ctx.scale(1, (1 - pose.squash) * talkBob)
   if (pose.turnAway) ctx.scale(-1, 1)
-  ctx.drawImage(im, -w / 2, -targetH, w, targetH)
+  ctx.drawImage(im, -w / 2, -h, w, h)
   ctx.restore()
 }
 
@@ -460,18 +463,19 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
       ctx.drawImage(scene3d.canvas, 0, 0, W, H)
     } else {
       // Two characters; uploaded artwork if available, else the drawn character.
-      const baselineY = H * 0.93
-      const targetH = H * 0.6
+      const baselineY = H * 0.95
+      const maxH = H * 0.66
+      const maxW = W * 0.4 // keep each character within its half → no overlap
       const renderChar = (cfg, role, facing, cx, tt, mouth) => {
         const a = art[cfg.label]
         if (a) {
           const pose = computePose(sc.action, role, lt, tt, mouth, sc.emotion, facing)
-          drawArtworkChar(ctx, a, pose, { cx, baselineY, targetH, mouth, emotion: sc.emotion, action: sc.action, t: tt })
+          drawArtworkChar(ctx, a, pose, { cx, baselineY, maxW, maxH, mouth, emotion: sc.emotion, action: sc.action, t: tt })
           // One-photo mode: also add an emotion cue so the face always "reacts".
           const fxList = pose.fx.slice()
           const ef = EMO_FX[sc.emotion]
           if (ef && !fxList.includes(ef)) fxList.push(ef)
-          drawArtFx(ctx, fxList, cx, baselineY - targetH * 0.82, tt)
+          drawArtFx(ctx, fxList, cx, baselineY - maxH * 0.85, tt)
         } else {
           drawCharacter(ctx, cfg, {
             cx, cy: H * 0.4, t: tt, mouth, scale: 0.62,
@@ -479,8 +483,8 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
           })
         }
       }
-      renderChar(mainCfg, mainSpeaks ? 'actor' : 'reactor', 1, W * 0.32, t, mainSpeaks ? speakMouth : 0)
-      renderChar(partnerCfg, partnerSpeaks ? 'actor' : 'reactor', -1, W * 0.68, t + 1.3, partnerSpeaks ? speakMouth : 0)
+      renderChar(mainCfg, mainSpeaks ? 'actor' : 'reactor', 1, W * 0.27, t, mainSpeaks ? speakMouth : 0)
+      renderChar(partnerCfg, partnerSpeaks ? 'actor' : 'reactor', -1, W * 0.73, t + 1.3, partnerSpeaks ? speakMouth : 0)
     }
 
     if (sc.prop && sc.prop !== 'none') drawProp(ctx, sc.prop, { cx: W * 0.5, cy: H * 0.26, t, scale: 0.9 })

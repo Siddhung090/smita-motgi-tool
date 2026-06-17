@@ -26,8 +26,11 @@ function processImage(canvas, removeBg) {
   const image = ctx.getImageData(0, 0, w, h)
   const d = image.data
   if (removeBg) {
-    const br = d[0], bg = d[1], bb = d[2], tol = 44
-    const close = (i) => Math.abs(d[i] - br) < tol && Math.abs(d[i + 1] - bg) < tol && Math.abs(d[i + 2] - bb) < tol
+    // Sample all four corners so we can clear white, cream, blue… backgrounds.
+    const corner = (x, y) => { const i = (y * w + x) * 4; return [d[i], d[i + 1], d[i + 2]] }
+    const refs = [corner(0, 0), corner(w - 1, 0), corner(0, h - 1), corner(w - 1, h - 1)]
+    const tol = 60
+    const close = (i) => refs.some((r) => Math.abs(d[i] - r[0]) < tol && Math.abs(d[i + 1] - r[1]) < tol && Math.abs(d[i + 2] - r[2]) < tol)
     const visited = new Uint8Array(w * h)
     const stack = []
     const seed = (x, y) => {
