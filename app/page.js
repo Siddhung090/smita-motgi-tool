@@ -24,7 +24,7 @@ function CharacterPreview({ name, speaking }) {
       drawBackground(ctx, canvas.width, canvas.height, t, cfg.cheek + '55')
       drawCharacter(ctx, cfg, {
         cx: canvas.width / 2,
-        cy: canvas.height * 0.34,
+        cy: canvas.height * 0.46,
         t,
         mouth: Math.max(0, mouth),
         scale: 0.5,
@@ -108,6 +108,7 @@ export default function Home() {
     try {
       const blob = await createTalkingVideo({
         script,
+        scenes: analysis?.scenes,
         character: characterName,
         canvas: canvasRef.current,
         onStatus: setStatusMessage,

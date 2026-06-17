@@ -32,21 +32,33 @@ const ANALYSIS_SCHEMA = {
           beat: { type: 'string' },
           narration: { type: 'string' },
           visual: { type: 'string' },
+          speaker: { type: 'string', description: 'Which character speaks this line: the main character name, the partner name, or "Both".' },
+          emotion: { type: 'string', enum: ['happy', 'love', 'sad', 'surprised', 'angry', 'sleepy', 'excited', 'neutral'] },
+          setting: { type: 'string', enum: ['park', 'bedroom', 'kitchen', 'cafe', 'night', 'beach', 'rain', 'plain'] },
+          prop: { type: 'string', enum: ['none', 'heart', 'gift', 'food', 'balloon', 'flower', 'coffee'] },
         },
-        required: ['beat', 'narration', 'visual'],
+        required: ['beat', 'narration', 'visual', 'speaker', 'emotion', 'setting', 'prop'],
       },
     },
   },
   required: ['suggestedTitle', 'summary', 'tone', 'character', 'script', 'scenes'],
 }
 
-const SYSTEM_PROMPT = `You are a creative video scriptwriter for a "talking character" video tool.
-Given a user's story and a chosen character, you:
-1. Understand the story and distill it into a clear narrative.
-2. Design the character (name, appearance, personality, and speaking/voice style) so it fits the story. Keep the user's chosen character name unless it is empty.
-3. Write a "script" — the exact words the character will speak, in first person, narrating the story. Keep it natural, engaging, and suitable for being spoken aloud (roughly 60-150 words unless the story is longer).
-4. Break the story into 3-6 scenes; for each, give a short beat label, the narration line(s) for that beat, and a one-line visual description.
-Write for the spoken word: short sentences, vivid, warm. Match the requested tone.`
+const SYSTEM_PROMPT = `You are a creative director for a cute cartoon-short video tool in the style of "Bubu and Dudu" — two adorable characters (a couple/duo) acting out short, wholesome, funny or sweet stories.
+The cast is exactly TWO characters: the chosen main character and their partner. Bubu pairs with Dudu, Momo pairs with Zara. They appear together on screen.
+Given a user's story, you:
+1. Understand the story and distill it into a clear, warm, cute narrative for these two characters.
+2. Design the main character (name, appearance, personality, speaking/voice style). Keep the user's chosen character name unless it is empty.
+3. Write a "script" — all the spoken lines in order, natural and suitable for being read aloud (roughly 60-150 words; aim for a video of about 20-40 seconds).
+4. Break the story into 4-7 short scenes. For EACH scene provide:
+   - beat: a short label
+   - narration: the exact words spoken in this scene (one or two short sentences)
+   - visual: a one-line description of what happens
+   - speaker: who says the line — the main character's name, the partner's name, or "Both"
+   - emotion: the mood (happy, love, sad, surprised, angry, sleepy, excited, neutral)
+   - setting: the location (park, bedroom, kitchen, cafe, night, beach, rain, plain)
+   - prop: an optional cute object on screen (none, heart, gift, food, balloon, flower, coffee)
+Vary the settings, emotions and speakers across scenes so the video feels lively and animated. Write for the spoken word: short sentences, vivid, warm, a little playful. Match the requested tone.`
 
 export async function POST(request) {
   try {
@@ -69,7 +81,13 @@ export async function POST(request) {
 
     const client = new Anthropic()
 
-    let userContent = `Chosen character: ${character || '(none — you choose a fitting name)'}\n\nStory / content:\n${text}`
+    const PAIRS = { Dudu: 'Bubu', Bubu: 'Dudu', Momo: 'Zara', Zara: 'Momo' }
+    const mainName = character || 'Dudu'
+    const partnerName = PAIRS[mainName] || 'Bubu'
+
+    let userContent =
+      `Main character: ${mainName}\nPartner character (also on screen): ${partnerName}\n` +
+      `Use these two names as the "speaker" for each scene (or "Both").\n\nStory / content:\n${text}`
     if (videoLink && videoLink.trim()) {
       userContent +=
         `\n\nThe user also provided a reference video link for inspiration: ${videoLink}\n` +
