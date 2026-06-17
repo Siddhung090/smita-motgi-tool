@@ -143,14 +143,30 @@ function buildScenes(scenes, script, mainName, partnerName) {
       })
   }
 
-  // No AI scenes — one scene per sentence; keywords in each sentence pick the
-  // background/emotion/action/prop, and the speaker alternates.
-  const parts = splitIntoChunks(script, 120)
-  return parts.map((narration, i) => ({
-    narration,
-    speaker: i % 2 === 0 ? 'main' : 'partner',
-    ...detectScene(narration),
-  }))
+  // No AI scenes. If the user wrote a "Name: dialogue" script we honour who
+  // speaks each line; lines like "Both: ..." make both speak. Lines without a
+  // name simply alternate. Keywords in each line pick background/action/prop.
+  const rawLines = script.split(/\n+/).map((l) => l.trim()).filter(Boolean)
+  const lines = rawLines.length > 1 ? rawLines : splitIntoChunks(script, 120)
+  const out = []
+  let last = 'partner'
+  for (const line of lines) {
+    let speaker = null
+    let text = line
+    const m = line.match(/^([A-Za-z]+)\s*:\s*(.*)$/)
+    if (m) {
+      const nm = m[1].toLowerCase()
+      if (nm === main) { speaker = 'main'; text = m[2] }
+      else if (nm === partner) { speaker = 'partner'; text = m[2] }
+      else if (nm === 'both') { speaker = 'both'; text = m[2] }
+    }
+    text = text.trim()
+    if (!text) continue
+    if (!speaker) speaker = last === 'main' ? 'partner' : 'main'
+    if (speaker !== 'both') last = speaker
+    out.push({ narration: text, speaker, ...detectScene(text) })
+  }
+  return out.length ? out : [{ narration: script.trim(), speaker: 'main', ...detectScene(script) }]
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
