@@ -187,6 +187,17 @@
   background: #eef2ff;
 }
 
+.artBtnSet {
+  border-style: solid;
+  border-color: #34d399;
+  background: #ecfdf5;
+  color: #059669;
+}
+
+.artRow {
+  flex-wrap: wrap;
+}
+
 .artClear {
   border: none;
   background: #fee2e2;

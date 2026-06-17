@@ -80,10 +80,18 @@ function drawArtFx(ctx, fx, x, headY, t) {
   }
 }
 
-// Draw an uploaded character image, puppeted by the pose. If a "talking" image
-// is provided, swap to it while the mouth is open for simple lip-sync.
-function drawArtworkChar(ctx, art, pose, { cx, baselineY, targetH, mouth }) {
-  const im = art.talk && mouth > 0.15 ? art.talk : art.base
+// Draw an uploaded character image, puppeted by the pose. Picks the image that
+// best matches the scene: an expression image for the emotion, the "talking"
+// image while the mouth is open (lip-sync), else the normal image.
+const EMOTION_SLOT = { happy: 'happy', excited: 'happy', love: 'love', sad: 'sad', angry: 'angry', surprised: 'surprised' }
+
+function drawArtworkChar(ctx, imgs, pose, { cx, baselineY, targetH, mouth, emotion }) {
+  let im = imgs.base
+  const es = EMOTION_SLOT[emotion]
+  if (es && imgs[es]) im = imgs[es]
+  if (pose.turnAway && imgs.angry) im = imgs.angry
+  if (mouth > 0.15 && imgs.talk) im = imgs.talk
+  if (!im) { for (const k in imgs) { im = imgs[k]; break } }
   if (!im || !im.height) return
   const w = (im.width / im.height) * targetH
   ctx.save()
@@ -316,10 +324,12 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
   if (artwork) {
     for (const cfg of [mainCfg, partnerCfg]) {
       const a = artwork[cfg.label]
-      if (a && a.base) {
-        const base = await loadImage(a.base)
-        const talk = a.talk ? await loadImage(a.talk) : null
-        if (base) art[cfg.label] = { base, talk }
+      if (a) {
+        const imgs = {}
+        for (const slot of Object.keys(a)) {
+          if (a[slot]) { const im = await loadImage(a[slot]); if (im) imgs[slot] = im }
+        }
+        if (Object.keys(imgs).length) art[cfg.label] = imgs
       }
     }
   }
@@ -388,7 +398,7 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
         const a = art[cfg.label]
         if (a) {
           const pose = computePose(sc.action, role, lt, tt, mouth, sc.emotion, facing)
-          drawArtworkChar(ctx, a, pose, { cx, baselineY, targetH, mouth })
+          drawArtworkChar(ctx, a, pose, { cx, baselineY, targetH, mouth, emotion: sc.emotion })
           drawArtFx(ctx, pose.fx, cx, baselineY - targetH * 0.82, tt)
         } else {
           drawCharacter(ctx, cfg, {

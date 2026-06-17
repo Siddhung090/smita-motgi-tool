@@ -5,6 +5,83 @@ import styles from './page.module.css'
 import { createTalkingVideo } from './lib/talkingVideo'
 import { CHARACTERS, getCharacter, drawBackground, drawCharacter } from './lib/characters'
 
+// Upload slots per character: a normal image plus optional expression/talking
+// images. The video shows the right one per scene.
+const ART_SLOTS = [
+  { key: 'base', label: 'Normal' },
+  { key: 'talk', label: 'Talking' },
+  { key: 'happy', label: 'Happy' },
+  { key: 'sad', label: 'Sad' },
+  { key: 'angry', label: 'Angry' },
+  { key: 'surprised', label: 'Wow' },
+  { key: 'love', label: 'Love' },
+]
+
+// Flood-fill from the edges to make the background transparent (keeps the
+// character's interior intact), then crop to the character. Returns a canvas.
+function processImage(canvas, removeBg) {
+  const ctx = canvas.getContext('2d')
+  const w = canvas.width, h = canvas.height
+  const image = ctx.getImageData(0, 0, w, h)
+  const d = image.data
+  if (removeBg) {
+    const br = d[0], bg = d[1], bb = d[2], tol = 44
+    const close = (i) => Math.abs(d[i] - br) < tol && Math.abs(d[i + 1] - bg) < tol && Math.abs(d[i + 2] - bb) < tol
+    const visited = new Uint8Array(w * h)
+    const stack = []
+    const seed = (x, y) => {
+      if (x < 0 || y < 0 || x >= w || y >= h) return
+      const p = y * w + x
+      if (visited[p]) return
+      visited[p] = 1
+      if (close(p * 4)) stack.push(p)
+    }
+    for (let x = 0; x < w; x++) { seed(x, 0); seed(x, h - 1) }
+    for (let y = 0; y < h; y++) { seed(0, y); seed(w - 1, y) }
+    while (stack.length) {
+      const p = stack.pop()
+      d[p * 4 + 3] = 0
+      const x = p % w, y = (p / w) | 0
+      seed(x + 1, y); seed(x - 1, y); seed(x, y + 1); seed(x, y - 1)
+    }
+    ctx.putImageData(image, 0, 0)
+  }
+  let minX = w, minY = h, maxX = 0, maxY = 0, found = false
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (d[(y * w + x) * 4 + 3] > 12) { found = true; if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y }
+  }
+  if (!found || (minX === 0 && minY === 0 && maxX === w - 1 && maxY === h - 1)) return canvas
+  const cw = maxX - minX + 1, ch = maxY - minY + 1
+  const out = document.createElement('canvas')
+  out.width = cw; out.height = ch
+  out.getContext('2d').drawImage(canvas, minX, minY, cw, ch, 0, 0, cw, ch)
+  return out
+}
+
+// Read an image file, scale it down, optionally remove its background, and
+// return a compact (webp) data URL.
+function fileToArtDataURL(file, removeBg, max = 512) {
+  return new Promise((resolve) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const img = new Image()
+      img.onload = () => {
+        const scale = Math.min(1, max / Math.max(img.width, img.height))
+        const c = document.createElement('canvas')
+        c.width = Math.max(1, Math.round(img.width * scale))
+        c.height = Math.max(1, Math.round(img.height * scale))
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height)
+        let out = c
+        try { out = processImage(c, removeBg) } catch {}
+        resolve(out.toDataURL('image/webp', 0.9))
+      }
+      img.onerror = () => resolve(reader.result)
+      img.src = reader.result
+    }
+    reader.readAsDataURL(file)
+  })
+}
+
 // A tiny self-animating canvas that shows a character idling (blinking, bobbing).
 // `speaking` makes the mouth move so the selected character looks "live".
 function CharacterPreview({ name, speaking }) {
@@ -51,6 +128,7 @@ export default function Home() {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [use3D, setUse3D] = useState(false)
   const [artwork, setArtwork] = useState({})
+  const [removeBg, setRemoveBg] = useState(true)
   const [analysis, setAnalysis] = useState(null)
   const [analysisError, setAnalysisError] = useState('')
 
@@ -73,29 +151,9 @@ export default function Home() {
     } catch {}
   }, [artwork])
 
-  // Read an image file, scale it down (keeps storage small), return a data URL.
-  const fileToScaledDataURL = (file, max = 640) =>
-    new Promise((resolve) => {
-      const reader = new FileReader()
-      reader.onload = () => {
-        const img = new Image()
-        img.onload = () => {
-          const scale = Math.min(1, max / Math.max(img.width, img.height))
-          const c = document.createElement('canvas')
-          c.width = Math.round(img.width * scale)
-          c.height = Math.round(img.height * scale)
-          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height)
-          resolve(c.toDataURL('image/png'))
-        }
-        img.onerror = () => resolve(reader.result)
-        img.src = reader.result
-      }
-      reader.readAsDataURL(file)
-    })
-
   const handleArt = async (name, slot, file) => {
     if (!file) return
-    const url = await fileToScaledDataURL(file)
+    const url = await fileToArtDataURL(file, removeBg)
     setArtwork((prev) => ({ ...prev, [name]: { ...(prev[name] || {}), [slot]: url } }))
   }
 
@@ -269,32 +327,39 @@ export default function Home() {
             <div className={styles.formGroup}>
               <label>🎨 Use your own artwork (optional)</label>
               <p className={styles.hint}>
-                Upload a picture for a character and it will be animated instead
-                of the drawn one. A PNG with a transparent background works best.
-                Add a second “talking” picture (mouth open) for lip-sync.
+                Upload pictures for a character and they will be animated instead
+                of the drawn one. Upload a different picture for each expression
+                (Happy, Sad, Angry…) and a “Talking” one (mouth open) — the video
+                shows the right face per scene. One image alone will only move,
+                not change expression.
               </p>
+              <label className={styles.toggleRow}>
+                <input
+                  type="checkbox"
+                  checked={removeBg}
+                  onChange={(e) => setRemoveBg(e.target.checked)}
+                />
+                <span>Remove background automatically (upload after toggling)</span>
+              </label>
               {characters.map((char) => (
                 <div key={char.name} className={styles.artRow}>
                   <span className={styles.artName}>{char.name}</span>
-                  <label className={styles.artBtn}>
-                    {artwork[char.name]?.base ? '✓ Image' : 'Upload image'}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      hidden
-                      onChange={(e) => handleArt(char.name, 'base', e.target.files[0])}
-                    />
-                  </label>
-                  <label className={styles.artBtn}>
-                    {artwork[char.name]?.talk ? '✓ Talking' : '+ Talking'}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      hidden
-                      onChange={(e) => handleArt(char.name, 'talk', e.target.files[0])}
-                    />
-                  </label>
-                  {artwork[char.name]?.base && (
+                  {ART_SLOTS.map((slot) => (
+                    <label
+                      key={slot.key}
+                      className={`${styles.artBtn} ${artwork[char.name]?.[slot.key] ? styles.artBtnSet : ''}`}
+                    >
+                      {artwork[char.name]?.[slot.key] ? '✓ ' : ''}
+                      {slot.label}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        hidden
+                        onChange={(e) => handleArt(char.name, slot.key, e.target.files[0])}
+                      />
+                    </label>
+                  ))}
+                  {artwork[char.name] && (
                     <button type="button" className={styles.artClear} onClick={() => clearArt(char.name)}>
                       ✕
                     </button>
