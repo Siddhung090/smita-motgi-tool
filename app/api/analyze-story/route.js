@@ -34,7 +34,7 @@ const ANALYSIS_SCHEMA = {
           visual: { type: 'string' },
           speaker: { type: 'string', description: 'Which character speaks this line: the main character name, the partner name, or "Both".' },
           emotion: { type: 'string', enum: ['happy', 'love', 'sad', 'surprised', 'angry', 'sleepy', 'excited', 'neutral'] },
-          setting: { type: 'string', enum: ['park', 'bedroom', 'kitchen', 'cafe', 'night', 'beach', 'rain', 'plain'] },
+          setting: { type: 'string', enum: ['chai', 'street', 'home', 'diwali', 'monsoon', 'park', 'bedroom', 'kitchen', 'cafe', 'night', 'beach', 'rain', 'plain'] },
           prop: { type: 'string', enum: ['none', 'heart', 'gift', 'food', 'balloon', 'flower', 'coffee'] },
         },
         required: ['beat', 'narration', 'visual', 'speaker', 'emotion', 'setting', 'prop'],
@@ -56,9 +56,9 @@ Given a user's story, you:
    - visual: a one-line description of what happens
    - speaker: who says the line — the main character's name, the partner's name, or "Both"
    - emotion: the mood (happy, love, sad, surprised, angry, sleepy, excited, neutral)
-   - setting: the location (park, bedroom, kitchen, cafe, night, beach, rain, plain)
+   - setting: the location. Indian-flavoured options: chai (roadside tea stall), street (Indian street with auto-rickshaw), home (Indian living room with rangoli/diya), diwali (festive night with fireworks & diyas), monsoon (rainy street). Generic options: park, bedroom, kitchen, cafe, night, beach, rain, plain.
    - prop: an optional cute object on screen (none, heart, gift, food, balloon, flower, coffee)
-Vary the settings, emotions and speakers across scenes so the video feels lively and animated. Write for the spoken word: short sentences, vivid, warm, a little playful. Match the requested tone.`
+Vary the settings, emotions and speakers across scenes so the video feels lively and animated. If the story has an Indian context, PREFER the Indian settings (chai, street, home, diwali, monsoon). Write for the spoken word: short sentences, vivid, warm, a little playful. Match the requested tone.`
 
 export async function POST(request) {
   try {

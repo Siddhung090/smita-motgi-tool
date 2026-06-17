@@ -89,8 +89,8 @@ function buildScenes(scenes, script, mainName, partnerName) {
 
   // No AI scenes — turn plain text into a little story: one scene per sentence,
   // cycling settings/emotions and alternating who speaks so it feels animated.
-  const settingsCycle = ['plain', 'park', 'cafe', 'bedroom', 'night', 'beach']
-  const emotionCycle = ['happy', 'love', 'excited', 'surprised', 'happy', 'love']
+  const settingsCycle = ['chai', 'street', 'home', 'monsoon', 'diwali', 'park']
+  const emotionCycle = ['happy', 'surprised', 'sad', 'love', 'excited', 'happy']
   const parts = splitIntoChunks(script, 120)
   return parts.map((narration, i) => ({
     narration,
