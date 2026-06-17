@@ -337,11 +337,12 @@ export default function Home() {
             <div className={styles.formGroup}>
               <label>🎨 Use your own artwork (optional)</label>
               <p className={styles.hint}>
-                Upload a picture <strong>or an animated GIF</strong> for each
-                expression (Happy, Sad, Angry, Cry…) and a “Talking” one — the
-                video shows the right one per scene. Animated GIFs play their
-                animation (great for crying, dancing, beating). A still photo
-                only moves; a GIF moves on its own.
+                Just upload <strong>one “Normal” picture</strong> per character —
+                the tool adds expressions automatically (tears when crying, anger
+                mark when angry, hearts for love, “!” for surprise, a talking
+                wobble while speaking). The other slots are optional: add separate
+                pictures or <strong>animated GIFs</strong> for even better results
+                (a GIF plays its own animation).
               </p>
               <label className={styles.toggleRow}>
                 <input

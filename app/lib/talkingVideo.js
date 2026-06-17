@@ -76,6 +76,19 @@ function drawArtFx(ctx, fx, x, headY, t) {
         ctx.save(); ctx.globalAlpha = 1 - p; ctx.fillStyle = '#6a5acd'
         ctx.beginPath(); ctx.arc(nx, ny, 5, 0, 6.283); ctx.fill(); ctx.fillRect(nx + 3, ny - 16, 2, 16); ctx.restore()
       }
+    } else if (f === 'exclaim') {
+      ctx.save(); ctx.fillStyle = '#ffd23a'; ctx.strokeStyle = '#b8860b'; ctx.lineWidth = 2
+      ctx.font = 'bold 42px sans-serif'; ctx.textAlign = 'center'
+      const bob = Math.sin(t * 6) * 3
+      ctx.fillText('!', x, headY - 6 + bob); ctx.strokeText('!', x, headY - 6 + bob); ctx.restore()
+    } else if (f === 'zzz') {
+      ctx.save(); ctx.fillStyle = '#8fb0ff'; ctx.font = 'bold 20px sans-serif'; ctx.textAlign = 'left'
+      for (let i = 0; i < 3; i++) {
+        const p = (t * 0.5 + i * 0.33) % 1
+        ctx.globalAlpha = 1 - p
+        ctx.fillText('z', x + 12 + i * 12, headY - 6 - p * 40 - i * 6)
+      }
+      ctx.restore()
     }
   }
 }
@@ -84,22 +97,28 @@ function drawArtFx(ctx, fx, x, headY, t) {
 // best matches the scene: an expression image for the emotion, the "talking"
 // image while the mouth is open (lip-sync), else the normal image.
 const EMOTION_SLOT = { happy: 'happy', excited: 'happy', love: 'love', sad: 'sad', angry: 'angry', surprised: 'surprised' }
+// In one-photo mode, the emotion always adds a floating cue so the face reacts.
+const EMO_FX = { sad: 'tears', angry: 'anger', love: 'hearts', happy: 'sparkle', excited: 'sparkle', surprised: 'exclaim', sleepy: 'zzz' }
 
-function drawArtworkChar(ctx, imgs, pose, { cx, baselineY, targetH, mouth, emotion, action }) {
+function drawArtworkChar(ctx, imgs, pose, { cx, baselineY, targetH, mouth, emotion, action, t }) {
   let im = imgs.base
   const es = EMOTION_SLOT[emotion]
   if (es && imgs[es]) im = imgs[es]
   if (action === 'cry' && imgs.cry) im = imgs.cry
   if ((action === 'hit' || action === 'beat') && imgs.angry) im = imgs.angry
   if (pose.turnAway && imgs.angry) im = imgs.angry
-  if (mouth > 0.15 && imgs.talk) im = imgs.talk
+  const speaking = mouth > 0.15
+  if (speaking && imgs.talk) im = imgs.talk
   if (!im) { for (const k in imgs) { im = imgs[k]; break } }
   if (!im || !im.height) return
   const w = (im.width / im.height) * targetH
+  // If there is no dedicated "talking" image, give a single photo a small
+  // squash-bob while speaking so it reads as talking.
+  const talkBob = speaking && !imgs.talk ? 1 + Math.sin(t * 26) * 0.025 * (0.5 + mouth) : 1
   ctx.save()
   ctx.translate(cx + pose.dx * 1.3, baselineY + pose.dy * 1.4)
   ctx.rotate(-pose.lean)
-  ctx.scale(1, 1 - pose.squash)
+  ctx.scale(1, (1 - pose.squash) * talkBob)
   if (pose.turnAway) ctx.scale(-1, 1)
   ctx.drawImage(im, -w / 2, -targetH, w, targetH)
   ctx.restore()
@@ -447,8 +466,12 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
         const a = art[cfg.label]
         if (a) {
           const pose = computePose(sc.action, role, lt, tt, mouth, sc.emotion, facing)
-          drawArtworkChar(ctx, a, pose, { cx, baselineY, targetH, mouth, emotion: sc.emotion, action: sc.action })
-          drawArtFx(ctx, pose.fx, cx, baselineY - targetH * 0.82, tt)
+          drawArtworkChar(ctx, a, pose, { cx, baselineY, targetH, mouth, emotion: sc.emotion, action: sc.action, t: tt })
+          // One-photo mode: also add an emotion cue so the face always "reacts".
+          const fxList = pose.fx.slice()
+          const ef = EMO_FX[sc.emotion]
+          if (ef && !fxList.includes(ef)) fxList.push(ef)
+          drawArtFx(ctx, fxList, cx, baselineY - targetH * 0.82, tt)
         } else {
           drawCharacter(ctx, cfg, {
             cx, cy: H * 0.4, t: tt, mouth, scale: 0.62,
