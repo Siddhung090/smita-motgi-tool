@@ -178,7 +178,7 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
     // Voice belongs to whoever speaks this scene ('both' uses the main voice).
     const who = scene.speaker === 'partner' ? partnerCfg : mainCfg
     scene.voice = who.voice
-    scene.pitch = who.pitch || 1
+    let src = 'edge'
     for (const chunk of splitIntoChunks(scene.narration)) {
       if (onStatus) onStatus(`Generating voice ${++done}/${total}...`)
       const res = await fetch('/api/tts', {
@@ -190,9 +190,13 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
         const info = await res.json().catch(() => ({}))
         throw new Error(info.message || 'Voice generation failed.')
       }
+      src = res.headers.get('X-TTS-Source') || src
       const arr = await res.arrayBuffer()
       scene.buffers.push(await audioCtx.decodeAudioData(arr))
     }
+    // Good Edge voices keep pitch subtle; the Google fallback uses a stronger
+    // pitch so the two characters still sound clearly different.
+    scene.pitch = src === 'google' ? (who.fallbackPitch || 1) : (who.pitch || 1)
   }
 
   // 2. Audio graph: clip → analyser (mouth) + speakers + recording dest.

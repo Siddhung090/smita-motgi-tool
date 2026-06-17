@@ -4,15 +4,16 @@
 // style: round bodies, rosy cheeks, blinking eyes, lip-sync, and emotions.
 
 // Character presets. `type` controls panda-vs-bear styling; colors define the
-// look. `voice` is a free StreamElements/Polly voice name and `pitch` is the
-// playback-rate tweak (>1 = higher/younger). To change a voice, just swap the
-// `voice` value — e.g. Indian female: 'Raveena' or 'Aditi'; young US kids:
-// 'Justin' (boy) / 'Ivy' (girl); adult male: 'Brian' / 'Matthew'.
+// look. `voice` is a free Microsoft Edge neural voice name. `pitch` is the
+// playback-rate tweak used with those good voices (keep subtle); `fallbackPitch`
+// is used when we fall back to the generic Google voice (stronger, so the two
+// characters still sound clearly different). Indian voices: en-IN-PrabhatNeural
+// (male), en-IN-NeerjaNeural (female), hi-IN-MadhurNeural (male), hi-IN-SwaraNeural (female).
 export const CHARACTERS = {
-  Dudu: { label: 'Dudu', type: 'panda', fur: '#ffffff', shade: '#e7ecf3', ear: '#3b3b40', cheek: '#ffb0c8', accent: '#3b3b40', voice: 'Justin',  pitch: 1.0 },
-  Bubu: { label: 'Bubu', type: 'bear',  fur: '#cf9466', shade: '#b97e51', ear: '#a96b3d', cheek: '#ff97a6', accent: '#4f3220', voice: 'Raveena', pitch: 1.08 },
-  Momo: { label: 'Momo', type: 'bear',  fur: '#ffc2da', shade: '#f6a8c6', ear: '#ef8fb3', cheek: '#ff7ba3', accent: '#7c4a5c', voice: 'Ivy',     pitch: 1.0 },
-  Zara: { label: 'Zara', type: 'panda', fur: '#bfe6d8', shade: '#a4d8c7', ear: '#7cc6ae', cheek: '#ff9aa6', accent: '#355a4d', voice: 'Aditi',   pitch: 1.05 },
+  Dudu: { label: 'Dudu', type: 'panda', fur: '#ffffff', shade: '#e7ecf3', ear: '#3b3b40', cheek: '#ffb0c8', accent: '#3b3b40', voice: 'en-IN-PrabhatNeural', pitch: 1.04, fallbackPitch: 0.85 },
+  Bubu: { label: 'Bubu', type: 'bear',  fur: '#cf9466', shade: '#b97e51', ear: '#a96b3d', cheek: '#ff97a6', accent: '#4f3220', voice: 'en-IN-NeerjaNeural',  pitch: 1.08, fallbackPitch: 1.18 },
+  Momo: { label: 'Momo', type: 'bear',  fur: '#ffc2da', shade: '#f6a8c6', ear: '#ef8fb3', cheek: '#ff7ba3', accent: '#7c4a5c', voice: 'hi-IN-SwaraNeural',   pitch: 1.05, fallbackPitch: 1.12 },
+  Zara: { label: 'Zara', type: 'panda', fur: '#bfe6d8', shade: '#a4d8c7', ear: '#7cc6ae', cheek: '#ff9aa6', accent: '#355a4d', voice: 'hi-IN-MadhurNeural',   pitch: 0.98, fallbackPitch: 0.9 },
 }
 
 // Who appears alongside each character (the duo / couple).
