@@ -169,10 +169,12 @@ function detectScene(sentence) {
   else if (has(/yay|hurray|happy|friend|best|togeth|hello|\bhi\b|namaste/)) { emotion = 'happy'; action = 'clap' }
 
   let prop = 'none'
-  if (has(/gift|present|surprise box/)) prop = 'gift'
+  if (has(/\bstick\b|danda|cane|baton|lakdi/)) prop = 'stick'
+  else if (has(/hammer|mallet|hathoda/)) prop = 'hammer'
+  else if (has(/gift|present|surprise box/)) prop = 'gift'
   else if (has(/flower|rose|gulab/)) prop = 'flower'
   else if (has(/balloon/)) prop = 'balloon'
-  else if (has(/samosa|cake|food|\beat\b|khana|biscuit|sweets|laddu/)) prop = 'food'
+  else if (has(/samosa|cake|food|\beat\b|khana|biscuit|sweets|laddu|chocolate/)) prop = 'food'
   else if (has(/chai|\btea\b|coffee/)) prop = 'coffee'
   else if (has(/love|pyaar|heart/)) prop = 'heart'
 
@@ -487,7 +489,21 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
       renderChar(partnerCfg, partnerSpeaks ? 'actor' : 'reactor', -1, W * 0.73, t + 1.3, partnerSpeaks ? speakMouth : 0)
     }
 
-    if (sc.prop && sc.prop !== 'none') drawProp(ctx, sc.prop, { cx: W * 0.5, cy: H * 0.26, t, scale: 0.9 })
+    // Prop goes into the speaking character's hand (centre for 3D / "both").
+    if (sc.prop && sc.prop !== 'none') {
+      if (scene3d || sc.speaker === 'both') {
+        drawProp(ctx, sc.prop, { cx: W * 0.5, cy: scene3d ? H * 0.26 : H * 0.52, t, scale: 0.85 })
+      } else {
+        const partnerSide = sc.speaker === 'partner'
+        const ax = partnerSide ? W * 0.7 : W * 0.3
+        const toward = partnerSide ? -1 : 1 // hand reaches toward the centre
+        const weapon = sc.action === 'beat'
+        const handX = ax + toward * W * 0.11
+        const handY = weapon ? H * 0.4 : H * 0.56
+        const rot = weapon ? toward * (-0.6 + Math.sin(lt * 7) * 0.7) : undefined
+        drawProp(ctx, sc.prop, { cx: handX, cy: handY, t, scale: 0.7, rot })
+      }
+    }
 
     // Name tag of who's speaking.
     const speakerName = sc.speaker === 'partner' ? partnerCfg.label

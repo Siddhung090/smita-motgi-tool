@@ -398,7 +398,7 @@ function bgMonsoon(ctx, W, H, t) {
 
 // --- props -------------------------------------------------------------------
 
-export function drawProp(ctx, prop, { cx, cy, t, scale = 1 }) {
+export function drawProp(ctx, prop, { cx, cy, t, scale = 1, rot }) {
   if (!prop || prop === 'none') return
   const bob = Math.sin(t * 3) * 6 * scale
   const x = cx, y = cy + bob
@@ -445,12 +445,12 @@ export function drawProp(ctx, prop, { cx, cy, t, scale = 1 }) {
       }
       break
     case 'stick': { // a danda, swung at an angle
-      ctx.save(); ctx.translate(x, y - 10 * scale); ctx.rotate(-0.6)
+      ctx.save(); ctx.translate(x, y - 10 * scale); ctx.rotate(rot !== undefined ? rot : -0.6)
       fillRoundRect(ctx, -5 * scale, -44 * scale, 10 * scale, 88 * scale, 5 * scale, '#a9734a')
       ctx.restore(); break
     }
     case 'hammer': { // cartoon mallet
-      ctx.save(); ctx.translate(x, y - 10 * scale); ctx.rotate(-0.6)
+      ctx.save(); ctx.translate(x, y - 10 * scale); ctx.rotate(rot !== undefined ? rot : -0.6)
       fillRoundRect(ctx, -5 * scale, -8 * scale, 10 * scale, 70 * scale, 4 * scale, '#a9734a') // handle
       fillRoundRect(ctx, -24 * scale, -34 * scale, 48 * scale, 28 * scale, 6 * scale, '#9aa0a6') // head
       ctx.restore(); break
