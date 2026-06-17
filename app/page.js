@@ -12,6 +12,7 @@ const ART_SLOTS = [
   { key: 'talk', label: 'Talking' },
   { key: 'happy', label: 'Happy' },
   { key: 'sad', label: 'Sad' },
+  { key: 'cry', label: 'Cry' },
   { key: 'angry', label: 'Angry' },
   { key: 'surprised', label: 'Wow' },
   { key: 'love', label: 'Love' },

@@ -33,7 +33,7 @@ export const SETTINGS = [
   'plain', 'chai', 'street', 'home', 'diwali', 'monsoon',
   'park', 'bedroom', 'kitchen', 'cafe', 'night', 'beach', 'rain',
 ]
-export const PROPS = ['none', 'heart', 'gift', 'food', 'balloon', 'flower', 'coffee']
+export const PROPS = ['none', 'heart', 'gift', 'food', 'balloon', 'flower', 'coffee', 'stick', 'hammer']
 
 // --- small drawing helpers ---------------------------------------------------
 
@@ -444,6 +444,17 @@ export function drawProp(ctx, prop, { cx, cy, t, scale = 1 }) {
         ctx.stroke()
       }
       break
+    case 'stick': { // a danda, swung at an angle
+      ctx.save(); ctx.translate(x, y - 10 * scale); ctx.rotate(-0.6)
+      fillRoundRect(ctx, -5 * scale, -44 * scale, 10 * scale, 88 * scale, 5 * scale, '#a9734a')
+      ctx.restore(); break
+    }
+    case 'hammer': { // cartoon mallet
+      ctx.save(); ctx.translate(x, y - 10 * scale); ctx.rotate(-0.6)
+      fillRoundRect(ctx, -5 * scale, -8 * scale, 10 * scale, 70 * scale, 4 * scale, '#a9734a') // handle
+      fillRoundRect(ctx, -24 * scale, -34 * scale, 48 * scale, 28 * scale, 6 * scale, '#9aa0a6') // head
+      ctx.restore(); break
+    }
   }
 }
 
@@ -452,6 +463,7 @@ export function drawProp(ctx, prop, { cx, cy, t, scale = 1 }) {
 export const ACTIONS = [
   'idle', 'wave', 'hug', 'give', 'jump', 'dance', 'cry', 'sulk',
   'point', 'clap', 'nod', 'shake', 'walkin', 'hit', 'look',
+  'beat', 'chase', 'run',
 ]
 
 // Compute a body pose for a given action. `role` is 'actor' (doing the action)
@@ -478,11 +490,15 @@ export function computePose(action, role, lt, t, mouth, emotion, facing) {
         pose.dx = -Math.sin(lt * 4) * 8; pose.lean = -Math.sin(lt * 4) * 0.1; pose.emotion = 'happy'; break
       case 'wave':
         raiseNear(1.0 + Math.sin(lt * 8) * 0.2); pose.emotion = 'happy'; break
-      case 'hit': { // getting playfully beaten — jerk away on each swing, see stars
+      case 'hit': case 'beat': { // getting beaten — jerk away on each swing, see stars
         const swing = Math.max(0, Math.sin(lt * 8))
-        pose.dx = -facing * swing * 14; pose.lean = -facing * swing * 0.18
+        pose.dx = -facing * swing * 16; pose.lean = -facing * swing * 0.2
         pose.emotion = 'surprised'; pose.fx.push('dizzy'); break
       }
+      case 'chase': // fleeing — run away ahead, scared
+        pose.dx = -facing * (14 + Math.sin(lt * 3) * 5)
+        pose.dy = -Math.abs(Math.sin(lt * 10 + 1)) * 11
+        pose.lean = -facing * 0.16; pose.emotion = 'surprised'; break
       case 'look':
         pose.dx = facing * 4; pose.lean = facing * 0.08
         pose.emotion = emotion === 'neutral' ? 'love' : emotion
@@ -543,6 +559,20 @@ export function computePose(action, role, lt, t, mouth, emotion, facing) {
       pose.dy = -Math.abs(Math.sin(lt * 8)) * 6 * (1 - p)
       pose.armL = idle * 2.5; pose.armR = -idle * 2.5; break
     }
+    case 'beat': { // beating the partner with a weapon — big overhead swings
+      const sw = Math.sin(lt * 7)
+      pose.dx = facing * (6 + Math.max(0, sw) * 10); pose.lean = facing * 0.16
+      raiseNear(1.7 + sw * 0.7); pose.emotion = 'angry'; break
+    }
+    case 'chase': // chasing the partner — running, leaning forward
+      pose.dx = facing * (8 + Math.sin(lt * 3) * 6)
+      pose.dy = -Math.abs(Math.sin(lt * 10)) * 11; pose.lean = facing * 0.2
+      pose.armL = 0.5 + Math.sin(lt * 10) * 0.4; pose.armR = -0.5 - Math.sin(lt * 10) * 0.4
+      pose.emotion = 'angry'; break
+    case 'run': // running on the spot
+      pose.dy = -Math.abs(Math.sin(lt * 10)) * 10; pose.lean = facing * 0.08
+      pose.armL = 0.4 + Math.sin(lt * 10) * 0.5; pose.armR = -0.4 - Math.sin(lt * 10) * 0.5
+      break
     default: break
   }
   return pose

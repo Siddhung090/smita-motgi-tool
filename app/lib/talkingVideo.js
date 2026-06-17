@@ -85,10 +85,12 @@ function drawArtFx(ctx, fx, x, headY, t) {
 // image while the mouth is open (lip-sync), else the normal image.
 const EMOTION_SLOT = { happy: 'happy', excited: 'happy', love: 'love', sad: 'sad', angry: 'angry', surprised: 'surprised' }
 
-function drawArtworkChar(ctx, imgs, pose, { cx, baselineY, targetH, mouth, emotion }) {
+function drawArtworkChar(ctx, imgs, pose, { cx, baselineY, targetH, mouth, emotion, action }) {
   let im = imgs.base
   const es = EMOTION_SLOT[emotion]
   if (es && imgs[es]) im = imgs[es]
+  if (action === 'cry' && imgs.cry) im = imgs.cry
+  if ((action === 'hit' || action === 'beat') && imgs.angry) im = imgs.angry
   if (pose.turnAway && imgs.angry) im = imgs.angry
   if (mouth > 0.15 && imgs.talk) im = imgs.talk
   if (!im) { for (const k in imgs) { im = imgs[k]; break } }
@@ -247,20 +249,49 @@ function buildScenes(scenes, script, mainName, partnerName) {
   for (const line of lines) {
     let speaker = null
     let text = line
-    const m = line.match(/^([A-Za-z]+)\s*:\s*(.*)$/)
+    let tag = ''
+    const m = line.match(/^([A-Za-z]+)\s*(?:[([]([^)\]]*)[)\]])?\s*:\s*(.*)$/)
     if (m) {
       const nm = m[1].toLowerCase()
-      if (nm === main) { speaker = 'main'; text = m[2] }
-      else if (nm === partner) { speaker = 'partner'; text = m[2] }
-      else if (nm === 'both') { speaker = 'both'; text = m[2] }
+      tag = (m[2] || '').toLowerCase().trim()
+      text = m[3]
+      if (nm === main) speaker = 'main'
+      else if (nm === partner) speaker = 'partner'
+      else if (nm === 'both') speaker = 'both'
     }
     text = text.trim()
     if (!text) continue
     if (!speaker) speaker = last === 'main' ? 'partner' : 'main'
     if (speaker !== 'both') last = speaker
-    out.push({ narration: text, speaker, ...detectScene(text) })
+    const scene = { narration: text, speaker, ...detectScene(text) }
+    const tg = TAG_MAP[tag]
+    if (tg) { scene.emotion = tg.emotion; scene.action = tg.action; if (tg.prop) scene.prop = tg.prop }
+    out.push(scene)
   }
   return out.length ? out : [{ narration: script.trim(), speaker: 'main', ...detectScene(script) }]
+}
+
+// Optional "(tag)" after a name in a dialogue line sets the emotion + action
+// explicitly, e.g.  Bubu (beat): I will hit you!   or   Dudu (cry): It hurts!
+const TAG_MAP = {
+  happy: { emotion: 'happy', action: 'wave' }, smile: { emotion: 'happy', action: 'wave' },
+  sad: { emotion: 'sad', action: 'cry' }, cry: { emotion: 'sad', action: 'cry' }, crying: { emotion: 'sad', action: 'cry' },
+  angry: { emotion: 'angry', action: 'sulk' }, mad: { emotion: 'angry', action: 'sulk' },
+  love: { emotion: 'love', action: 'look' }, romantic: { emotion: 'love', action: 'look' },
+  hug: { emotion: 'love', action: 'hug' }, kiss: { emotion: 'love', action: 'look' },
+  surprised: { emotion: 'surprised', action: 'jump' }, wow: { emotion: 'surprised', action: 'jump' },
+  shock: { emotion: 'surprised', action: 'jump' }, shocked: { emotion: 'surprised', action: 'jump' },
+  excited: { emotion: 'excited', action: 'jump' }, jump: { emotion: 'excited', action: 'jump' },
+  dance: { emotion: 'excited', action: 'dance' }, clap: { emotion: 'happy', action: 'clap' },
+  wave: { emotion: 'happy', action: 'wave' }, hit: { emotion: 'angry', action: 'hit' },
+  beat: { emotion: 'angry', action: 'beat', prop: 'stick' }, stick: { emotion: 'angry', action: 'beat', prop: 'stick' },
+  hammer: { emotion: 'angry', action: 'beat', prop: 'hammer' },
+  chase: { emotion: 'angry', action: 'chase' }, run: { emotion: 'surprised', action: 'run' },
+  sulk: { emotion: 'angry', action: 'sulk' }, sorry: { emotion: 'love', action: 'give' },
+  give: { emotion: 'happy', action: 'give' }, gift: { emotion: 'happy', action: 'give', prop: 'gift' },
+  point: { emotion: 'neutral', action: 'point' }, look: { emotion: 'love', action: 'look' },
+  nod: { emotion: 'happy', action: 'nod' }, shake: { emotion: 'angry', action: 'shake' },
+  sleepy: { emotion: 'sleepy', action: 'idle' },
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -398,7 +429,7 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
         const a = art[cfg.label]
         if (a) {
           const pose = computePose(sc.action, role, lt, tt, mouth, sc.emotion, facing)
-          drawArtworkChar(ctx, a, pose, { cx, baselineY, targetH, mouth, emotion: sc.emotion })
+          drawArtworkChar(ctx, a, pose, { cx, baselineY, targetH, mouth, emotion: sc.emotion, action: sc.action })
           drawArtFx(ctx, pose.fx, cx, baselineY - targetH * 0.82, tt)
         } else {
           drawCharacter(ctx, cfg, {
