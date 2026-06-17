@@ -36,8 +36,9 @@ const ANALYSIS_SCHEMA = {
           emotion: { type: 'string', enum: ['happy', 'love', 'sad', 'surprised', 'angry', 'sleepy', 'excited', 'neutral'] },
           setting: { type: 'string', enum: ['chai', 'street', 'home', 'diwali', 'monsoon', 'park', 'bedroom', 'kitchen', 'cafe', 'night', 'beach', 'rain', 'plain'] },
           prop: { type: 'string', enum: ['none', 'heart', 'gift', 'food', 'balloon', 'flower', 'coffee'] },
+          action: { type: 'string', enum: ['idle', 'wave', 'hug', 'give', 'jump', 'dance', 'cry', 'sulk', 'point', 'clap', 'nod', 'shake', 'walkin'] },
         },
-        required: ['beat', 'narration', 'visual', 'speaker', 'emotion', 'setting', 'prop'],
+        required: ['beat', 'narration', 'visual', 'speaker', 'emotion', 'setting', 'prop', 'action'],
       },
     },
   },
@@ -58,7 +59,8 @@ Given a user's story, you:
    - emotion: the mood (happy, love, sad, surprised, angry, sleepy, excited, neutral)
    - setting: the location. Indian-flavoured options: chai (roadside tea stall), street (Indian street with auto-rickshaw), home (Indian living room with rangoli/diya), diwali (festive night with fireworks & diyas), monsoon (rainy street). Generic options: park, bedroom, kitchen, cafe, night, beach, rain, plain.
    - prop: an optional cute object on screen (none, heart, gift, food, balloon, flower, coffee)
-Vary the settings, emotions and speakers across scenes so the video feels lively and animated. If the story has an Indian context, PREFER the Indian settings (chai, street, home, diwali, monsoon). Write for the spoken word: short sentences, vivid, warm, a little playful. Match the requested tone.`
+   - action: what the SPEAKING character physically DOES this scene — idle, wave, hug, give (hand something over), jump, dance, cry, sulk (turn away in a huff), point, clap, nod (yes), shake (no), walkin (enter the scene). Choose an action that matches the line and emotion (e.g. an apology → give or hug; a tiff → sulk; excitement → jump or dance; crying → cry). The partner automatically reacts.
+Vary the settings, emotions, actions and speakers across scenes so the video feels lively and animated. If the story has an Indian context, PREFER the Indian settings (chai, street, home, diwali, monsoon). Write for the spoken word: short sentences, vivid, warm, a little playful. Match the requested tone.`
 
 export async function POST(request) {
   try {

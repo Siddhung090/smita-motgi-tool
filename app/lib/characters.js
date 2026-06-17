@@ -444,22 +444,111 @@ export function drawProp(ctx, prop, { cx, cy, t, scale = 1 }) {
 
 // --- the character -----------------------------------------------------------
 
+export const ACTIONS = [
+  'idle', 'wave', 'hug', 'give', 'jump', 'dance', 'cry', 'sulk',
+  'point', 'clap', 'nod', 'shake', 'walkin',
+]
+
+// Compute a body pose for a given action. `role` is 'actor' (doing the action)
+// or 'reactor' (the partner responding). `facing` is +1 if the partner is to
+// the right of this character, -1 if to the left. Arm rotations: raising the
+// LEFT arm is a positive angle, the RIGHT arm a negative angle.
+function computePose(action, role, lt, t, mouth, emotion, facing) {
+  const idle = Math.sin(t * 6) * (0.07 + mouth * 0.2)
+  const pose = { dx: 0, dy: 0, lean: 0, squash: 0, armL: idle, armR: -idle, turnAway: false, fx: [], emotion }
+  const nearRight = facing > 0
+  const raiseNear = (a) => { if (nearRight) pose.armR = -a; else pose.armL = a }
+
+  if (role === 'reactor') {
+    switch (action) {
+      case 'hug': case 'give':
+        pose.dx = facing * 5; pose.lean = facing * 0.1; pose.fx.push('hearts'); pose.emotion = 'love'; break
+      case 'cry':
+        pose.lean = facing * 0.08; pose.emotion = 'sad'; break
+      case 'sulk':
+        pose.dx = facing * 4; pose.lean = facing * 0.12; raiseNear(0.5); pose.emotion = 'sad'; break
+      case 'jump': case 'clap':
+        pose.dy = -Math.abs(Math.sin(lt * 5)) * 8; pose.emotion = 'happy'; break
+      case 'dance':
+        pose.dx = -Math.sin(lt * 4) * 8; pose.lean = -Math.sin(lt * 4) * 0.1; pose.emotion = 'happy'; break
+      case 'wave':
+        raiseNear(1.0 + Math.sin(lt * 8) * 0.2); pose.emotion = 'happy'; break
+      default: break
+    }
+    return pose
+  }
+
+  switch (action) {
+    case 'wave':
+      raiseNear(1.2 + Math.sin(lt * 9) * 0.3); pose.emotion = emotion === 'neutral' ? 'happy' : emotion; break
+    case 'jump': {
+      const j = Math.abs(Math.sin(lt * 5))
+      pose.dy = -24 * j; pose.squash = (1 - j) * 0.12
+      pose.armL = 1.0; pose.armR = -1.0; pose.fx.push('sparkle'); break
+    }
+    case 'hug':
+      pose.dx = facing * 12; pose.lean = facing * 0.12
+      pose.armL = 0.9; pose.armR = -0.9; pose.fx.push('hearts'); pose.emotion = 'love'; break
+    case 'give':
+      pose.dx = facing * 8; pose.lean = facing * 0.08; raiseNear(0.7)
+      pose.emotion = emotion === 'neutral' ? 'happy' : emotion; pose.fx.push('hearts'); break
+    case 'cry':
+      pose.dy = 4; pose.dx = Math.sin(lt * 22) * 2
+      pose.armL = 0.3; pose.armR = -0.3; pose.fx.push('tears'); pose.emotion = 'sad'; break
+    case 'sulk':
+      pose.turnAway = true; pose.lean = -facing * 0.2; pose.dx = -facing * 4
+      pose.armL = -0.15; pose.armR = 0.15; pose.fx.push('anger'); pose.emotion = 'angry'; break
+    case 'point':
+      raiseNear(0.95); break
+    case 'dance':
+      pose.dx = Math.sin(lt * 4) * 12; pose.lean = Math.sin(lt * 4) * 0.14
+      pose.armL = 0.6 + Math.sin(lt * 8) * 0.3; pose.armR = -0.6 - Math.sin(lt * 8) * 0.3
+      pose.fx.push('notes'); pose.emotion = 'happy'; break
+    case 'clap': {
+      const c = Math.abs(Math.sin(lt * 10))
+      pose.armL = 0.4 + c * 0.5; pose.armR = -0.4 - c * 0.5; pose.fx.push('sparkle'); pose.emotion = 'happy'; break
+    }
+    case 'nod':
+      pose.dy = Math.sin(lt * 6) * 4; break
+    case 'shake':
+      pose.dx = Math.sin(lt * 11) * 5; break
+    case 'walkin': {
+      const p = Math.min(1, lt / 1.5)
+      pose.dx = -facing * (1 - p) * 130
+      pose.dy = -Math.abs(Math.sin(lt * 8)) * 6 * (1 - p)
+      pose.armL = idle * 2.5; pose.armR = -idle * 2.5; break
+    }
+    default: break
+  }
+  return pose
+}
+
 // Draws one animated character. (cx, cy) is the HEAD centre.
-//   t       : seconds (idle/blink/wave)
+//   t       : seconds (idle/blink)
 //   mouth   : 0..1 mouth openness (lip-sync); 0 = idle/closed
 //   emotion : one of EMOTIONS
+//   action  : one of ACTIONS (the thing it's doing this scene)
+//   lt      : seconds since the current scene started (drives the action)
+//   role    : 'actor' (doing the action) | 'reactor' (partner reacting)
+//   facing  : +1 if its partner is to the right, -1 if to the left
 //   scale   : size multiplier
-export function drawCharacter(ctx, cfg, { cx, cy, t, mouth = 0, scale = 1, emotion = 'neutral' }) {
+export function drawCharacter(ctx, cfg, {
+  cx, cy, t, mouth = 0, scale = 1, emotion = 'neutral',
+  action = 'idle', lt = 0, role = 'actor', facing = 1,
+}) {
+  const pose = computePose(action, role, lt, t, mouth, emotion, facing)
+  const emo = pose.emotion
+  const faceEmo = pose.turnAway ? 'hmph' : emo
   const headR = 92 * scale
   const speaking = mouth > 0.12
   const bob = Math.sin(t * 2) * 4 * scale + (speaking ? Math.sin(t * 9) * 2 * scale : 0)
   const breathe = 1 + Math.sin(t * 2) * 0.012
-  const blink = (t % 3.2) < 0.14 && emotion !== 'love' && emotion !== 'sleepy'
-  const wave = Math.sin(t * 6) * (0.12 + mouth * 0.5)
+  const blink = (t % 3.2) < 0.14
 
   ctx.save()
-  ctx.translate(cx, cy + bob)
-  ctx.scale(breathe, breathe)
+  ctx.translate(cx + pose.dx * scale, cy + bob + pose.dy * scale)
+  ctx.rotate(pose.lean)
+  ctx.scale(breathe, breathe * (1 - pose.squash))
 
   const bodyCy = headR + 96 * scale
   const bodyRx = 82 * scale
@@ -472,7 +561,7 @@ export function drawCharacter(ctx, cfg, { cx, cy, t, mouth = 0, scale = 1, emoti
   for (const side of [-1, 1]) {
     ctx.save()
     ctx.translate(side * (bodyRx - 6 * scale), bodyCy - 8 * scale)
-    ctx.rotate(side * wave)
+    ctx.rotate(side === -1 ? pose.armL : pose.armR)
     fillEllipse(ctx, side * 16 * scale, 24 * scale, 20 * scale, 34 * scale, cfg.fur)
     ctx.restore()
   }
@@ -492,41 +581,83 @@ export function drawCharacter(ctx, cfg, { cx, cy, t, mouth = 0, scale = 1, emoti
     fillEllipse(ctx,  32 * scale, -4 * scale, 22 * scale, 26 * scale, 'rgba(60,60,70,0.10)')
   }
 
-  // Cheeks — brighter for happy/love.
-  const blush = emotion === 'love' || emotion === 'happy' || emotion === 'excited' ? 14 : 12
+  // Cheeks — brighter/puffed for happy/love/hmph.
+  const blush = faceEmo === 'hmph' ? 16 : (emo === 'love' || emo === 'happy' || emo === 'excited' ? 14 : 12)
   fillEllipse(ctx, -52 * scale, 24 * scale, 19 * scale, blush * scale, cfg.cheek)
   fillEllipse(ctx,  52 * scale, 24 * scale, 19 * scale, blush * scale, cfg.cheek)
 
-  drawEyes(ctx, 32 * scale, -4 * scale, scale, emotion, blink, cfg)
-  drawBrows(ctx, 32 * scale, -26 * scale, scale, emotion, cfg)
+  drawEyes(ctx, 32 * scale, -4 * scale, scale, faceEmo, blink, cfg)
+  drawBrows(ctx, 32 * scale, -26 * scale, scale, faceEmo, cfg)
   fillEllipse(ctx, 0, 16 * scale, 7 * scale, 5 * scale, cfg.accent)
-  drawMouth(ctx, 0, 30 * scale, mouth, scale, cfg.accent, emotion)
+  drawMouth(ctx, 0, 30 * scale, mouth, scale, cfg.accent, faceEmo)
 
-  // a teardrop for sad
-  if (emotion === 'sad') fillEllipse(ctx, 44 * scale, 6 * scale, 5 * scale, 8 * scale, '#8fd0ff')
+  drawFx(ctx, pose.fx, headR, t, scale)
 
   ctx.restore()
 }
 
+function drawFx(ctx, fxList, headR, t, scale) {
+  if (!fxList || !fxList.length) return
+  for (const fx of fxList) {
+    if (fx === 'hearts') {
+      for (let i = 0; i < 3; i++) {
+        const prog = (t * 0.6 + i * 0.33) % 1
+        ctx.globalAlpha = 1 - prog
+        drawHeart(ctx, (Math.sin(t * 2 + i * 2) * 18 + (i - 1) * 26) * scale, -headR - prog * 60 * scale, (8 + i * 2) * scale, '#ff5d7a')
+      }
+      ctx.globalAlpha = 1
+    } else if (fx === 'tears') {
+      for (const sx of [-32, 32]) {
+        const prog = (t * 1.6 + (sx > 0 ? 0.5 : 0)) % 1
+        fillEllipse(ctx, sx * scale, (2 + prog * 34) * scale, 4 * scale, 7 * scale, '#8fd0ff')
+      }
+    } else if (fx === 'anger') {
+      const x = headR * 0.62, y = -headR * 0.7
+      ctx.strokeStyle = '#ff4d4d'; ctx.lineWidth = 3 * scale; ctx.lineCap = 'round'
+      const p = (0.8 + Math.sin(t * 10) * 0.2) * scale
+      for (const [a, b] of [[-1, -1], [1, -1], [0, 1]]) {
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + a * 9 * p, y + b * 9 * p); ctx.stroke()
+      }
+    } else if (fx === 'notes') {
+      for (let i = 0; i < 2; i++) {
+        const prog = (t * 0.7 + i * 0.5) % 1
+        const xx = headR * 0.85 * (i ? 1 : -1) + Math.sin(t * 3 + i) * 8 * scale
+        const yy = -headR * 0.4 - prog * 50 * scale
+        ctx.globalAlpha = 1 - prog
+        fillCircle(ctx, xx, yy, 5 * scale, '#6a5acd')
+        ctx.fillStyle = '#6a5acd'; ctx.fillRect(xx + 3 * scale, yy - 16 * scale, 2 * scale, 16 * scale)
+      }
+      ctx.globalAlpha = 1
+    } else if (fx === 'sparkle') {
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2 + t
+        ctx.globalAlpha = 0.4 + 0.6 * Math.abs(Math.sin(t * 3 + i))
+        drawStar(ctx, Math.cos(a) * headR * 1.1, Math.sin(a) * headR * 0.9, 5 * scale, '#ffd23a')
+      }
+      ctx.globalAlpha = 1
+    }
+  }
+}
+
 function drawEyes(ctx, eyeX, eyeY, scale, emotion, blink, cfg) {
   const c = cfg.accent
-  if (blink) {
+  if (blink && emotion !== 'love' && emotion !== 'sleepy' && emotion !== 'happy' && emotion !== 'hmph' && emotion !== 'excited') {
     ctx.strokeStyle = c; ctx.lineWidth = 5 * scale; ctx.lineCap = 'round'
     for (const sx of [-eyeX, eyeX]) {
       ctx.beginPath(); ctx.arc(sx, eyeY + 2 * scale, 9 * scale, Math.PI * 0.15, Math.PI * 0.85); ctx.stroke()
     }
     return
   }
-  if (emotion === 'love') {
-    drawHeart(ctx, -eyeX, eyeY - 6 * scale, 10 * scale, '#ff5d7a')
-    drawHeart(ctx,  eyeX, eyeY - 6 * scale, 10 * scale, '#ff5d7a')
-    return
-  }
-  if (emotion === 'happy' || emotion === 'excited') { // upward happy arcs ^ ^
+  if (emotion === 'happy' || emotion === 'excited' || emotion === 'hmph') { // upward happy arcs ^ ^
     ctx.strokeStyle = c; ctx.lineWidth = 5 * scale; ctx.lineCap = 'round'
     for (const sx of [-eyeX, eyeX]) {
       ctx.beginPath(); ctx.arc(sx, eyeY + 6 * scale, 9 * scale, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke()
     }
+    return
+  }
+  if (emotion === 'love') {
+    drawHeart(ctx, -eyeX, eyeY - 6 * scale, 10 * scale, '#ff5d7a')
+    drawHeart(ctx,  eyeX, eyeY - 6 * scale, 10 * scale, '#ff5d7a')
     return
   }
   if (emotion === 'sleepy') {
@@ -564,7 +695,7 @@ function drawMouth(ctx, x, y, open, scale, color, emotion) {
     const h = (4 + open * 18) * scale
     fillEllipse(ctx, 0, h * 0.4, w, h, '#5b2a32')
     fillEllipse(ctx, 0, h * 0.9, w * 0.7, h * 0.45, '#ff8aa0')
-  } else if (emotion === 'sad' || emotion === 'angry') {
+  } else if (emotion === 'sad' || emotion === 'angry' || emotion === 'hmph') {
     ctx.beginPath()
     ctx.moveTo(-8 * scale, 4 * scale)
     ctx.quadraticCurveTo(0, -3 * scale, 8 * scale, 4 * scale)

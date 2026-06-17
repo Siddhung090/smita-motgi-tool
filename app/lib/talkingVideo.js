@@ -6,8 +6,21 @@
 
 import {
   getCharacter, getPartner, drawSceneBackground, drawCharacter, drawProp,
-  EMOTIONS, SETTINGS,
+  EMOTIONS, SETTINGS, ACTIONS,
 } from './characters'
+
+// Pick a fitting action when the AI didn't specify one (or for the no-AI path).
+function actionForEmotion(emotion) {
+  switch (emotion) {
+    case 'love': return 'hug'
+    case 'sad': return 'cry'
+    case 'angry': return 'sulk'
+    case 'surprised': return 'jump'
+    case 'excited': return 'dance'
+    case 'happy': return 'wave'
+    default: return 'idle'
+  }
+}
 
 // Split text into chunks that fit the free TTS length limit (~200 chars),
 // breaking on sentence boundaries where possible.
@@ -78,19 +91,24 @@ function buildScenes(scenes, script, mainName, partnerName) {
   if (Array.isArray(scenes) && scenes.length) {
     return scenes
       .filter((s) => (s.narration || '').trim())
-      .map((s, i) => ({
-        narration: s.narration.trim(),
-        speaker: speakerSide(s.speaker),
-        emotion: clean(s.emotion, EMOTIONS, 'happy'),
-        setting: clean(s.setting, SETTINGS, 'plain'),
-        prop: s.prop || 'none',
-      }))
+      .map((s) => {
+        const emotion = clean(s.emotion, EMOTIONS, 'happy')
+        return {
+          narration: s.narration.trim(),
+          speaker: speakerSide(s.speaker),
+          emotion,
+          setting: clean(s.setting, SETTINGS, 'plain'),
+          prop: s.prop || 'none',
+          action: clean(s.action, ACTIONS, actionForEmotion(emotion)),
+        }
+      })
   }
 
   // No AI scenes — turn plain text into a little story: one scene per sentence,
-  // cycling settings/emotions and alternating who speaks so it feels animated.
+  // cycling settings/emotions/actions and alternating who speaks so it feels animated.
   const settingsCycle = ['chai', 'street', 'home', 'monsoon', 'diwali', 'park']
   const emotionCycle = ['happy', 'surprised', 'sad', 'love', 'excited', 'happy']
+  const actionCycle = ['wave', 'jump', 'cry', 'hug', 'dance', 'clap']
   const parts = splitIntoChunks(script, 120)
   return parts.map((narration, i) => ({
     narration,
@@ -98,6 +116,7 @@ function buildScenes(scenes, script, mainName, partnerName) {
     emotion: emotionCycle[i % emotionCycle.length],
     setting: settingsCycle[i % settingsCycle.length],
     prop: i % 3 === 0 ? 'heart' : 'none',
+    action: actionCycle[i % actionCycle.length],
   }))
 }
 
@@ -162,12 +181,13 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
   recorder.start()
 
   // 4. Shared animation state, updated as scenes play.
-  const state = { scene: story[0], caption: '', mouth: 0, flashStart: -1 }
+  const state = { scene: story[0], caption: '', mouth: 0, flashStart: -1, sceneStart: 0 }
   let rafId = null
   const start = performance.now()
 
   const draw = () => {
     const t = (performance.now() - start) / 1000
+    const lt = t - state.sceneStart // seconds since this scene began
     const sc = state.scene
 
     analyser.getByteFrequencyData(freq)
@@ -177,12 +197,18 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
     drawSceneBackground(ctx, W, H, t, sc.setting, mainCfg.cheek + '55')
 
     const speakMouth = state.mouth
-    const mainMouth = sc.speaker === 'main' || sc.speaker === 'both' ? speakMouth : 0
-    const partnerMouth = sc.speaker === 'partner' || sc.speaker === 'both' ? speakMouth : 0
+    const mainSpeaks = sc.speaker === 'main' || sc.speaker === 'both'
+    const partnerSpeaks = sc.speaker === 'partner' || sc.speaker === 'both'
 
-    // Two characters side by side; the listener shows the same mood.
-    drawCharacter(ctx, mainCfg, { cx: W * 0.32, cy: H * 0.4, t, mouth: mainMouth, scale: 0.62, emotion: sc.emotion })
-    drawCharacter(ctx, partnerCfg, { cx: W * 0.68, cy: H * 0.4, t: t + 1.3, mouth: partnerMouth, scale: 0.62, emotion: sc.emotion })
+    // Two characters; the speaker performs the scene action, the other reacts.
+    drawCharacter(ctx, mainCfg, {
+      cx: W * 0.32, cy: H * 0.4, t, mouth: mainSpeaks ? speakMouth : 0, scale: 0.62,
+      emotion: sc.emotion, action: sc.action, lt, role: mainSpeaks ? 'actor' : 'reactor', facing: 1,
+    })
+    drawCharacter(ctx, partnerCfg, {
+      cx: W * 0.68, cy: H * 0.4, t: t + 1.3, mouth: partnerSpeaks ? speakMouth : 0, scale: 0.62,
+      emotion: sc.emotion, action: sc.action, lt, role: partnerSpeaks ? 'actor' : 'reactor', facing: -1,
+    })
 
     if (sc.prop && sc.prop !== 'none') drawProp(ctx, sc.prop, { cx: W * 0.5, cy: H * 0.26, t, scale: 0.9 })
 
@@ -223,7 +249,8 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
     const scene = story[i]
     state.scene = scene
     state.caption = scene.narration
-    state.flashStart = (performance.now() - start) / 1000
+    state.sceneStart = (performance.now() - start) / 1000
+    state.flashStart = state.sceneStart
 
     if (scene.buffers.length === 0) {
       await sleep(1500)
