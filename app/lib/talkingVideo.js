@@ -22,6 +22,45 @@ function actionForEmotion(emotion) {
   }
 }
 
+// No-AI path: read keywords in a sentence to choose a fitting background,
+// emotion, action and prop — so the typed story actually drives the video.
+function detectScene(sentence) {
+  const s = ' ' + sentence.toLowerCase() + ' '
+  const has = (re) => re.test(s)
+
+  let setting = 'plain'
+  if (has(/chai|\btea\b|coffee|cafe|tapri/)) setting = 'chai'
+  else if (has(/auto|rickshaw|street|road|market|bazaar|shop/)) setting = 'street'
+  else if (has(/rain|baarish|monsoon|umbrella|wet/)) setting = 'monsoon'
+  else if (has(/diwali|festival|firework|cracker|diya|celebrat/)) setting = 'diwali'
+  else if (has(/home|ghar|room|house|\bbed\b|kitchen/)) setting = 'home'
+  else if (has(/park|garden|tree|outside/)) setting = 'park'
+  else if (has(/night|star|moon|sky/)) setting = 'night'
+  else if (has(/beach|\bsea\b|ocean|sand/)) setting = 'beach'
+
+  let emotion = 'happy'
+  let action = 'wave'
+  if (has(/\bhit\b|beat|maar|punch|fight|thappad|slap|jhagda|jhagra/)) { emotion = 'angry'; action = 'hit' }
+  else if (has(/angry|naraz|gussa|huff|upset with|annoy/)) { emotion = 'angry'; action = 'sulk' }
+  else if (has(/sorry|maaf|forgive|apolog|please don/)) { emotion = 'love'; action = 'give' }
+  else if (has(/love|pyaar|hug|miss you|\bdear\b|jaan|sweet/)) { emotion = 'love'; action = 'hug' }
+  else if (has(/\bsee\b|dekh|look at|eyes|stare|gaze|notice/)) { emotion = 'love'; action = 'look' }
+  else if (has(/sad|cry|rote|tear|forgot|alone|lonely|hurt/)) { emotion = 'sad'; action = 'cry' }
+  else if (has(/dance|party|celebrat|naach|enjoy/)) { emotion = 'excited'; action = 'dance' }
+  else if (has(/wow|surprise|arre|sudden|shock|woah|oh no/)) { emotion = 'surprised'; action = 'jump' }
+  else if (has(/yay|hurray|happy|friend|best|togeth|hello|\bhi\b|namaste/)) { emotion = 'happy'; action = 'clap' }
+
+  let prop = 'none'
+  if (has(/gift|present|surprise box/)) prop = 'gift'
+  else if (has(/flower|rose|gulab/)) prop = 'flower'
+  else if (has(/balloon/)) prop = 'balloon'
+  else if (has(/samosa|cake|food|\beat\b|khana|biscuit|sweets|laddu/)) prop = 'food'
+  else if (has(/chai|\btea\b|coffee/)) prop = 'coffee'
+  else if (has(/love|pyaar|heart/)) prop = 'heart'
+
+  return { setting, emotion, action, prop }
+}
+
 // Split text into chunks that fit the free TTS length limit (~200 chars),
 // breaking on sentence boundaries where possible.
 function splitIntoChunks(text, max = 180) {
@@ -104,19 +143,13 @@ function buildScenes(scenes, script, mainName, partnerName) {
       })
   }
 
-  // No AI scenes — turn plain text into a little story: one scene per sentence,
-  // cycling settings/emotions/actions and alternating who speaks so it feels animated.
-  const settingsCycle = ['chai', 'street', 'home', 'monsoon', 'diwali', 'park']
-  const emotionCycle = ['happy', 'surprised', 'sad', 'love', 'excited', 'happy']
-  const actionCycle = ['wave', 'jump', 'cry', 'hug', 'dance', 'clap']
+  // No AI scenes — one scene per sentence; keywords in each sentence pick the
+  // background/emotion/action/prop, and the speaker alternates.
   const parts = splitIntoChunks(script, 120)
   return parts.map((narration, i) => ({
     narration,
     speaker: i % 2 === 0 ? 'main' : 'partner',
-    emotion: emotionCycle[i % emotionCycle.length],
-    setting: settingsCycle[i % settingsCycle.length],
-    prop: i % 3 === 0 ? 'heart' : 'none',
-    action: actionCycle[i % actionCycle.length],
+    ...detectScene(narration),
   }))
 }
 
@@ -142,12 +175,16 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
   let done = 0
   for (const scene of story) {
     scene.buffers = []
+    // Voice belongs to whoever speaks this scene ('both' uses the main voice).
+    const who = scene.speaker === 'partner' ? partnerCfg : mainCfg
+    scene.voice = who.voice
+    scene.pitch = who.pitch || 1
     for (const chunk of splitIntoChunks(scene.narration)) {
       if (onStatus) onStatus(`Generating voice ${++done}/${total}...`)
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: chunk }),
+        body: JSON.stringify({ text: chunk, voice: scene.voice }),
       })
       if (!res.ok) {
         const info = await res.json().catch(() => ({}))
@@ -259,6 +296,7 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
         await new Promise((resolve) => {
           const src = audioCtx.createBufferSource()
           src.buffer = buffer
+          src.playbackRate.value = scene.pitch || 1
           src.connect(analyser); src.connect(dest); src.connect(audioCtx.destination)
           src.onended = resolve
           src.start()
