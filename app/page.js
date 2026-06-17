@@ -154,7 +154,16 @@ export default function Home() {
 
   const handleArt = async (name, slot, file) => {
     if (!file) return
-    const url = await fileToArtDataURL(file, removeBg)
+    // Keep GIFs as-is so they stay animated; process static images (scale +
+    // background removal + crop) into a compact still.
+    const url =
+      file.type === 'image/gif'
+        ? await new Promise((res) => {
+            const r = new FileReader()
+            r.onload = () => res(r.result)
+            r.readAsDataURL(file)
+          })
+        : await fileToArtDataURL(file, removeBg)
     setArtwork((prev) => ({ ...prev, [name]: { ...(prev[name] || {}), [slot]: url } }))
   }
 
@@ -328,11 +337,11 @@ export default function Home() {
             <div className={styles.formGroup}>
               <label>🎨 Use your own artwork (optional)</label>
               <p className={styles.hint}>
-                Upload pictures for a character and they will be animated instead
-                of the drawn one. Upload a different picture for each expression
-                (Happy, Sad, Angry…) and a “Talking” one (mouth open) — the video
-                shows the right face per scene. One image alone will only move,
-                not change expression.
+                Upload a picture <strong>or an animated GIF</strong> for each
+                expression (Happy, Sad, Angry, Cry…) and a “Talking” one — the
+                video shows the right one per scene. Animated GIFs play their
+                animation (great for crying, dancing, beating). A still photo
+                only moves; a GIF moves on its own.
               </p>
               <label className={styles.toggleRow}>
                 <input

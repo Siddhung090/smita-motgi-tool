@@ -351,6 +351,24 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
   const H = canvas.height
 
   // Preload any uploaded artwork for the two cast members.
+  // GIFs only animate while attached to the page, so we mount them off-screen
+  // and draw the live frame each tick; remove them when we're done.
+  const domImgs = []
+  const loadArtImage = (src) => {
+    if (typeof src === 'string' && src.startsWith('data:image/gif')) {
+      return new Promise((resolve) => {
+        const im = new Image()
+        im.onload = () => resolve(im)
+        im.onerror = () => resolve(null)
+        im.style.cssText = 'position:fixed;left:-99999px;top:0;width:1px;height:1px;opacity:0.01;'
+        document.body.appendChild(im)
+        domImgs.push(im)
+        im.src = src
+      })
+    }
+    return loadImage(src)
+  }
+
   const art = {}
   if (artwork) {
     for (const cfg of [mainCfg, partnerCfg]) {
@@ -358,7 +376,7 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
       if (a) {
         const imgs = {}
         for (const slot of Object.keys(a)) {
-          if (a[slot]) { const im = await loadImage(a[slot]); if (im) imgs[slot] = im }
+          if (a[slot]) { const im = await loadArtImage(a[slot]); if (im) imgs[slot] = im }
         }
         if (Object.keys(imgs).length) art[cfg.label] = imgs
       }
@@ -507,6 +525,7 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
   await stopped
   await audioCtx.close()
   if (scene3d) scene3d.dispose()
+  domImgs.forEach((el) => { try { el.remove() } catch {} })
 
   return new Blob(recorded, { type: recorder.mimeType || 'video/webm' })
 }
