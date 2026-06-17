@@ -320,7 +320,7 @@ const TAG_MAP = {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-export async function createTalkingVideo({ script, scenes, character, canvas, onStatus, mode, artwork }) {
+export async function createTalkingVideo({ script, scenes, character, canvas, onStatus, mode, artwork, showCaptions = false }) {
   if (typeof window === 'undefined') throw new Error('Must run in the browser.')
   const AudioCtx = window.AudioContext || window.webkitAudioContext
   if (!AudioCtx || typeof MediaRecorder === 'undefined' || !canvas.captureStream) {
@@ -509,8 +509,8 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
     const speakerName = sc.speaker === 'partner' ? partnerCfg.label
       : sc.speaker === 'both' ? `${mainCfg.label} & ${partnerCfg.label}` : mainCfg.label
 
-    // Caption bar.
-    if (state.caption) {
+    // Caption bar (optional).
+    if (showCaptions && state.caption) {
       ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'
       ctx.font = 'bold 22px sans-serif'
       const lines = wrapText(ctx, state.caption, W - 100)

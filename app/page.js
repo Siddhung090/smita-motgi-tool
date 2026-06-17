@@ -151,6 +151,7 @@ export default function Home() {
   const [videos, setVideos] = useState([])
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [use3D, setUse3D] = useState(false)
+  const [showSubtitles, setShowSubtitles] = useState(false)
   const [artwork, setArtwork] = useState({})
   const [removeBg, setRemoveBg] = useState(true)
   const [genOutfit, setGenOutfit] = useState('')
@@ -292,6 +293,7 @@ export default function Home() {
         onStatus: setStatusMessage,
         mode: use3D ? '3d' : '2d',
         artwork,
+        showCaptions: showSubtitles,
       })
 
       const url = URL.createObjectURL(blob)
@@ -462,6 +464,15 @@ export default function Home() {
                 </div>
               ))}
             </div>
+
+            <label className={styles.toggleRow}>
+              <input
+                type="checkbox"
+                checked={showSubtitles}
+                onChange={(e) => setShowSubtitles(e.target.checked)}
+              />
+              <span>💬 Show subtitles (off = no text on the video)</span>
+            </label>
 
             <label className={styles.toggleRow}>
               <input
