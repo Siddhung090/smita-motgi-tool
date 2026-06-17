@@ -50,6 +50,7 @@ export default function Home() {
   const [videos, setVideos] = useState([])
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [use3D, setUse3D] = useState(false)
+  const [artwork, setArtwork] = useState({})
   const [analysis, setAnalysis] = useState(null)
   const [analysisError, setAnalysisError] = useState('')
 
@@ -57,6 +58,54 @@ export default function Home() {
     name,
     ...CHARACTERS[name],
   }))
+
+  // Load/save uploaded artwork so it survives page reloads.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('bubudoodu_artwork')
+      if (saved) setArtwork(JSON.parse(saved))
+    } catch {}
+  }, [])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('bubudoodu_artwork', JSON.stringify(artwork))
+    } catch {}
+  }, [artwork])
+
+  // Read an image file, scale it down (keeps storage small), return a data URL.
+  const fileToScaledDataURL = (file, max = 640) =>
+    new Promise((resolve) => {
+      const reader = new FileReader()
+      reader.onload = () => {
+        const img = new Image()
+        img.onload = () => {
+          const scale = Math.min(1, max / Math.max(img.width, img.height))
+          const c = document.createElement('canvas')
+          c.width = Math.round(img.width * scale)
+          c.height = Math.round(img.height * scale)
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height)
+          resolve(c.toDataURL('image/png'))
+        }
+        img.onerror = () => resolve(reader.result)
+        img.src = reader.result
+      }
+      reader.readAsDataURL(file)
+    })
+
+  const handleArt = async (name, slot, file) => {
+    if (!file) return
+    const url = await fileToScaledDataURL(file)
+    setArtwork((prev) => ({ ...prev, [name]: { ...(prev[name] || {}), [slot]: url } }))
+  }
+
+  const clearArt = (name) => {
+    setArtwork((prev) => {
+      const next = { ...prev }
+      delete next[name]
+      return next
+    })
+  }
 
   const handleAnalyzeStory = async () => {
     if (!textContent.trim()) {
@@ -114,6 +163,7 @@ export default function Home() {
         canvas: canvasRef.current,
         onStatus: setStatusMessage,
         mode: use3D ? '3d' : '2d',
+        artwork,
       })
 
       const url = URL.createObjectURL(blob)
@@ -214,6 +264,43 @@ export default function Home() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className={styles.formGroup}>
+              <label>🎨 Use your own artwork (optional)</label>
+              <p className={styles.hint}>
+                Upload a picture for a character and it will be animated instead
+                of the drawn one. A PNG with a transparent background works best.
+                Add a second “talking” picture (mouth open) for lip-sync.
+              </p>
+              {characters.map((char) => (
+                <div key={char.name} className={styles.artRow}>
+                  <span className={styles.artName}>{char.name}</span>
+                  <label className={styles.artBtn}>
+                    {artwork[char.name]?.base ? '✓ Image' : 'Upload image'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      onChange={(e) => handleArt(char.name, 'base', e.target.files[0])}
+                    />
+                  </label>
+                  <label className={styles.artBtn}>
+                    {artwork[char.name]?.talk ? '✓ Talking' : '+ Talking'}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      onChange={(e) => handleArt(char.name, 'talk', e.target.files[0])}
+                    />
+                  </label>
+                  {artwork[char.name]?.base && (
+                    <button type="button" className={styles.artClear} onClick={() => clearArt(char.name)}>
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
 
             <label className={styles.toggleRow}>

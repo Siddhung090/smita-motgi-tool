@@ -6,8 +6,94 @@
 
 import {
   getCharacter, getPartner, drawSceneBackground, drawCharacter, drawProp,
-  EMOTIONS, SETTINGS, ACTIONS,
+  computePose, EMOTIONS, SETTINGS, ACTIONS,
 } from './characters'
+
+// --- uploaded-artwork rendering ----------------------------------------------
+
+function loadImage(src) {
+  return new Promise((resolve) => {
+    const im = new Image()
+    im.onload = () => resolve(im)
+    im.onerror = () => resolve(null)
+    im.src = src
+  })
+}
+
+function heartShape(ctx, x, y, s, alpha) {
+  ctx.save(); ctx.globalAlpha = alpha; ctx.translate(x, y); ctx.beginPath()
+  ctx.moveTo(0, s * 0.35)
+  ctx.bezierCurveTo(s, -s * 0.6, s * 1.1, s * 0.5, 0, s * 1.15)
+  ctx.bezierCurveTo(-s * 1.1, s * 0.5, -s, -s * 0.6, 0, s * 0.35)
+  ctx.fillStyle = '#ff5d7a'; ctx.fill(); ctx.restore()
+}
+
+function starShape(ctx, x, y, s, alpha) {
+  ctx.save(); ctx.globalAlpha = alpha; ctx.translate(x, y); ctx.beginPath()
+  for (let i = 0; i < 5; i++) {
+    const a = (i * 4 * Math.PI) / 5 - Math.PI / 2
+    ctx[i ? 'lineTo' : 'moveTo'](Math.cos(a) * s, Math.sin(a) * s)
+  }
+  ctx.closePath(); ctx.fillStyle = '#ffd23a'; ctx.fill(); ctx.restore()
+}
+
+// Floating effects drawn above an uploaded character (x = its centre, headY = top area).
+function drawArtFx(ctx, fx, x, headY, t) {
+  if (!fx || !fx.length) return
+  for (const f of fx) {
+    if (f === 'hearts') {
+      for (let i = 0; i < 3; i++) {
+        const p = (t * 0.6 + i * 0.33) % 1
+        heartShape(ctx, x + (i - 1) * 26 + Math.sin(t * 2 + i) * 14, headY - p * 60, 8 + i * 2, 1 - p)
+      }
+    } else if (f === 'tears') {
+      for (const sx of [-1, 1]) {
+        const p = (t * 1.6 + (sx > 0 ? 0.5 : 0)) % 1
+        ctx.save(); ctx.globalAlpha = 0.8; ctx.fillStyle = '#8fd0ff'
+        ctx.beginPath(); ctx.ellipse(x + sx * 22, headY + 34 + p * 44, 5, 8, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore()
+      }
+    } else if (f === 'dizzy') {
+      for (let i = 0; i < 3; i++) {
+        const a = t * 4 + i * 2.1
+        starShape(ctx, x + Math.cos(a) * 26, headY - 10 + Math.sin(a) * 8, 6, 1)
+      }
+    } else if (f === 'sparkle') {
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * 6.283 + t
+        starShape(ctx, x + Math.cos(a) * 42, headY + Math.sin(a) * 32, 6, 0.4 + 0.6 * Math.abs(Math.sin(t * 3 + i)))
+      }
+    } else if (f === 'anger') {
+      ctx.save(); ctx.strokeStyle = '#ff4d4d'; ctx.lineWidth = 3
+      const px = x + 36, py = headY - 4
+      for (const [a, b] of [[-1, -1], [1, -1], [0, 1]]) {
+        ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + a * 9, py + b * 9); ctx.stroke()
+      }
+      ctx.restore()
+    } else if (f === 'notes') {
+      for (let i = 0; i < 2; i++) {
+        const p = (t * 0.7 + i * 0.5) % 1
+        const nx = x + (i ? 30 : -30), ny = headY - p * 50
+        ctx.save(); ctx.globalAlpha = 1 - p; ctx.fillStyle = '#6a5acd'
+        ctx.beginPath(); ctx.arc(nx, ny, 5, 0, 6.283); ctx.fill(); ctx.fillRect(nx + 3, ny - 16, 2, 16); ctx.restore()
+      }
+    }
+  }
+}
+
+// Draw an uploaded character image, puppeted by the pose. If a "talking" image
+// is provided, swap to it while the mouth is open for simple lip-sync.
+function drawArtworkChar(ctx, art, pose, { cx, baselineY, targetH, mouth }) {
+  const im = art.talk && mouth > 0.15 ? art.talk : art.base
+  if (!im || !im.height) return
+  const w = (im.width / im.height) * targetH
+  ctx.save()
+  ctx.translate(cx + pose.dx * 1.3, baselineY + pose.dy * 1.4)
+  ctx.rotate(-pose.lean)
+  ctx.scale(1, 1 - pose.squash)
+  if (pose.turnAway) ctx.scale(-1, 1)
+  ctx.drawImage(im, -w / 2, -targetH, w, targetH)
+  ctx.restore()
+}
 
 // Pick a fitting action when the AI didn't specify one (or for the no-AI path).
 function actionForEmotion(emotion) {
@@ -171,7 +257,7 @@ function buildScenes(scenes, script, mainName, partnerName) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-export async function createTalkingVideo({ script, scenes, character, canvas, onStatus, mode }) {
+export async function createTalkingVideo({ script, scenes, character, canvas, onStatus, mode, artwork }) {
   if (typeof window === 'undefined') throw new Error('Must run in the browser.')
   const AudioCtx = window.AudioContext || window.webkitAudioContext
   if (!AudioCtx || typeof MediaRecorder === 'undefined' || !canvas.captureStream) {
@@ -225,9 +311,23 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
   const W = canvas.width
   const H = canvas.height
 
-  // Optional 3D stage. If it fails to initialise we silently fall back to 2D.
+  // Preload any uploaded artwork for the two cast members.
+  const art = {}
+  if (artwork) {
+    for (const cfg of [mainCfg, partnerCfg]) {
+      const a = artwork[cfg.label]
+      if (a && a.base) {
+        const base = await loadImage(a.base)
+        const talk = a.talk ? await loadImage(a.talk) : null
+        if (base) art[cfg.label] = { base, talk }
+      }
+    }
+  }
+  const hasArt = !!(art[mainCfg.label] || art[partnerCfg.label])
+
+  // Optional 3D stage (skipped when using uploaded artwork). Falls back to 2D.
   let scene3d = null
-  if (mode === '3d') {
+  if (mode === '3d' && !hasArt) {
     try {
       if (onStatus) onStatus('Loading 3D stage...')
       const { createScene3D } = await import('./scene3d')
@@ -281,15 +381,24 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
       })
       ctx.drawImage(scene3d.canvas, 0, 0, W, H)
     } else {
-      // Two flat characters; the speaker performs the action, the other reacts.
-      drawCharacter(ctx, mainCfg, {
-        cx: W * 0.32, cy: H * 0.4, t, mouth: mainSpeaks ? speakMouth : 0, scale: 0.62,
-        emotion: sc.emotion, action: sc.action, lt, role: mainSpeaks ? 'actor' : 'reactor', facing: 1,
-      })
-      drawCharacter(ctx, partnerCfg, {
-        cx: W * 0.68, cy: H * 0.4, t: t + 1.3, mouth: partnerSpeaks ? speakMouth : 0, scale: 0.62,
-        emotion: sc.emotion, action: sc.action, lt, role: partnerSpeaks ? 'actor' : 'reactor', facing: -1,
-      })
+      // Two characters; uploaded artwork if available, else the drawn character.
+      const baselineY = H * 0.93
+      const targetH = H * 0.6
+      const renderChar = (cfg, role, facing, cx, tt, mouth) => {
+        const a = art[cfg.label]
+        if (a) {
+          const pose = computePose(sc.action, role, lt, tt, mouth, sc.emotion, facing)
+          drawArtworkChar(ctx, a, pose, { cx, baselineY, targetH, mouth })
+          drawArtFx(ctx, pose.fx, cx, baselineY - targetH * 0.82, tt)
+        } else {
+          drawCharacter(ctx, cfg, {
+            cx, cy: H * 0.4, t: tt, mouth, scale: 0.62,
+            emotion: sc.emotion, action: sc.action, lt, role, facing,
+          })
+        }
+      }
+      renderChar(mainCfg, mainSpeaks ? 'actor' : 'reactor', 1, W * 0.32, t, mainSpeaks ? speakMouth : 0)
+      renderChar(partnerCfg, partnerSpeaks ? 'actor' : 'reactor', -1, W * 0.68, t + 1.3, partnerSpeaks ? speakMouth : 0)
     }
 
     if (sc.prop && sc.prop !== 'none') drawProp(ctx, sc.prop, { cx: W * 0.5, cy: H * 0.26, t, scale: 0.9 })
