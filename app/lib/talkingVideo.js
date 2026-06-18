@@ -330,6 +330,22 @@ function buildScenes(scenes, script, mainName, partnerName) {
   return out.length ? out : [{ narration: script.trim(), speaker: 'main', ...detectScene(script) }]
 }
 
+// Resolve a script/analysis into an ordered list of spoken lines with the
+// actual character NAME for each line. Used by the paid "movie" pipeline so the
+// right face speaks each line. ('both' lines are spoken by the main character.)
+export function planConversation({ scenes, script, character }) {
+  const mainCfg = getCharacter(character)
+  const partnerCfg = getPartner(character)
+  const story = buildScenes(scenes, script, mainCfg.label, partnerCfg.label)
+  return story
+    .filter((s) => (s.narration || '').trim())
+    .map((s) => ({
+      name: s.speaker === 'partner' ? partnerCfg.label : mainCfg.label,
+      narration: s.narration.trim(),
+      emotion: s.emotion,
+    }))
+}
+
 // Optional "(tag)" after a name in a dialogue line sets the emotion + action
 // explicitly, e.g.  Bubu (beat): I will hit you!   or   Dudu (cry): It hurts!
 const TAG_MAP = {

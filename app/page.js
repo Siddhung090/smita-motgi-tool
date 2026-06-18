@@ -2,8 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react'
 import styles from './page.module.css'
-import { createTalkingVideo } from './lib/talkingVideo'
-import { CHARACTERS, VOICES, getCharacter, drawBackground, drawCharacter } from './lib/characters'
+import { createTalkingVideo, planConversation } from './lib/talkingVideo'
+import { CHARACTERS, VOICES, getCharacter, getPartner, drawBackground, drawCharacter } from './lib/characters'
 
 // Upload slots per character: a normal image plus optional expression/talking
 // images. The video shows the right one per scene.
@@ -300,44 +300,71 @@ export default function Home() {
     }
   }
 
-  // Premium (paid) path: real photoreal lip-sync of the selected character's
-  // uploaded photo, rendered by a talking-head service via /api/talking-head.
-  const generateTalkingHead = async (script) => {
-    const base = artwork[characterName]?.base
-    if (!base) {
-      alert(`Premium lip-sync needs a "Normal" photo of ${characterName}. Upload one in the artwork section first.`)
+  // Premium (paid) path: a photoreal "movie" — each line of dialogue is lip-synced
+  // on the speaking character's own photo, then the clips are stitched into one
+  // MP4 with cuts between speakers (via /api/movie).
+  const generateMovie = async (script) => {
+    // Work out who speaks each line, then attach each character's photo + voice.
+    const plan = planConversation({ scenes: analysis?.scenes, script, character: characterName })
+    if (!plan.length) {
+      alert('No dialogue to film. Add a story (tip: write lines like "Name: dialogue").')
       return
     }
-    if (base.startsWith('data:image/gif')) {
-      alert('Premium lip-sync needs a still photo, not a GIF. Upload a Normal picture.')
+
+    // Every speaking character must have a still photo uploaded.
+    const speakers = [...new Set(plan.map((l) => l.name))]
+    const missing = speakers.filter((n) => {
+      const b = artwork[n]?.base
+      return !b || b.startsWith('data:image/gif')
+    })
+    if (missing.length) {
+      alert(
+        `Premium movie needs a still "Normal" photo for each character who talks.\n\nMissing photo for: ${missing.join(', ')}.\n\n` +
+        `Tip: ${characterName} talks with ${getPartner(characterName).label} — upload a photo for both in the artwork section.`
+      )
       return
     }
+
+    const lines = plan.map((l) => ({
+      image: artwork[l.name].base,
+      text: l.narration,
+      voiceId: voices[l.name] || getCharacter(l.name).voiceId,
+      emotion: l.emotion,
+    }))
+
     setIsGenerating(true)
-    setStatusMessage('Creating premium lip-sync… this runs on a paid service and can take 1–3 minutes.')
+    setStatusMessage(`Filming ${lines.length} line(s) on a paid service… this can take a few minutes per line. Please keep this tab open.`)
     try {
-      const voiceId = voices[characterName] || getCharacter(characterName).voiceId
-      const res = await fetch('/api/talking-head', {
+      const res = await fetch('/api/movie', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base, text: script, voiceId }),
+        body: JSON.stringify({ lines }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.message || 'Talking-head generation failed.')
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.message || 'Movie generation failed.')
+      }
+      const truncated = res.headers.get('X-Movie-Truncated') === '1'
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
       setVideos((prev) => [
         {
           id: Date.now(),
           title: videoTitle,
-          character: characterName,
+          character: speakers.join(' & '),
           date: new Date().toLocaleDateString(),
-          url: data.videoUrl,
-          external: true,
+          url,
+          mp4: true,
         },
         ...prev,
       ])
       setVideoGenerated(true)
       setTimeout(() => setVideoGenerated(false), 3000)
+      if (truncated) {
+        alert('Heads up: the movie was capped to the first lines to limit cost/time. Split a long story into parts for the rest.')
+      }
     } catch (error) {
-      alert('Premium lip-sync failed: ' + error.message)
+      alert('Premium movie failed: ' + error.message)
     } finally {
       setIsGenerating(false)
       setStatusMessage('')
@@ -353,7 +380,7 @@ export default function Home() {
     }
 
     if (premiumLipSync) {
-      await generateTalkingHead(script)
+      await generateMovie(script)
       return
     }
 
@@ -591,9 +618,11 @@ export default function Home() {
                 onChange={(e) => setPremiumLipSync(e.target.checked)}
               />
               <span>
-                🎤 Premium lip-sync (paid, beta) — photoreal mouth movement of
-                the selected character’s uploaded photo. Needs REPLICATE_API_TOKEN
-                on Render; ~1–3 min per video.
+                🎬 Premium movie (paid, beta) — photoreal lip-sync: each line is
+                spoken on that character’s own photo, then cut together into one
+                MP4. <strong>Upload a still photo for every character who talks</strong>
+                (e.g. both {characterName} &amp; {getPartner(characterName).label}).
+                Needs REPLICATE_API_TOKEN + billing on Render; a few minutes per line.
               </span>
             </label>
 
@@ -728,7 +757,7 @@ export default function Home() {
                         href={video.url}
                         {...(video.external
                           ? { target: '_blank', rel: 'noreferrer' }
-                          : { download: `${video.title}.webm` })}
+                          : { download: `${video.title}.${video.mp4 ? 'mp4' : 'webm'}` })}
                         className={styles.downloadButton}
                       >
                         {video.external ? '▶️ Open / Download (MP4)' : '📥 Download'}
