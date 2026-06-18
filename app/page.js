@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import styles from './page.module.css'
 import { createTalkingVideo } from './lib/talkingVideo'
-import { CHARACTERS, getCharacter, drawBackground, drawCharacter } from './lib/characters'
+import { CHARACTERS, VOICES, getCharacter, drawBackground, drawCharacter } from './lib/characters'
 
 // Upload slots per character: a normal image plus optional expression/talking
 // images. The video shows the right one per scene.
@@ -152,7 +152,10 @@ export default function Home() {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [use3D, setUse3D] = useState(false)
   const [showSubtitles, setShowSubtitles] = useState(false)
+  const [premiumLipSync, setPremiumLipSync] = useState(false)
   const [artwork, setArtwork] = useState({})
+  const [voices, setVoices] = useState({})
+  const [autoAI, setAutoAI] = useState(true)
   const [removeBg, setRemoveBg] = useState(true)
   const [genOutfit, setGenOutfit] = useState('')
   const [genBusy, setGenBusy] = useState('')
@@ -165,11 +168,13 @@ export default function Home() {
     ...CHARACTERS[name],
   }))
 
-  // Load/save uploaded artwork so it survives page reloads.
+  // Load/save uploaded artwork + chosen voices so they survive page reloads.
   useEffect(() => {
     try {
       const saved = localStorage.getItem('bubudoodu_artwork')
       if (saved) setArtwork(JSON.parse(saved))
+      const savedV = localStorage.getItem('bubudoodu_voices')
+      if (savedV) setVoices(JSON.parse(savedV))
     } catch {}
   }, [])
 
@@ -179,19 +184,33 @@ export default function Home() {
     } catch {}
   }, [artwork])
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('bubudoodu_voices', JSON.stringify(voices))
+    } catch {}
+  }, [voices])
+
   const handleArt = async (name, slot, file) => {
     if (!file) return
     // Keep GIFs as-is so they stay animated; process static images (scale +
     // background removal + crop) into a compact still.
-    const url =
-      file.type === 'image/gif'
-        ? await new Promise((res) => {
-            const r = new FileReader()
-            r.onload = () => res(r.result)
-            r.readAsDataURL(file)
-          })
-        : await fileToArtDataURL(file, removeBg)
+    const isGif = file.type === 'image/gif'
+    const url = isGif
+      ? await new Promise((res) => {
+          const r = new FileReader()
+          r.onload = () => res(r.result)
+          r.readAsDataURL(file)
+        })
+      : await fileToArtDataURL(file, removeBg)
     setArtwork((prev) => ({ ...prev, [name]: { ...(prev[name] || {}), [slot]: url } }))
+
+    // Automatic character creation: when a "Normal" still photo is uploaded and
+    // auto-AI is on, immediately generate all expressions from that one image so
+    // the character is ready to animate with no extra clicks. (Skipped for GIFs,
+    // which already carry their own animation.)
+    if (slot === 'base' && autoAI && !isGif) {
+      generateExpressions(name, url, true)
+    }
   }
 
   const clearArt = (name) => {
@@ -203,14 +222,16 @@ export default function Home() {
   }
 
   // Paid AI: from the "Normal" picture, auto-create expression variations.
-  const generateExpressions = async (name) => {
-    const base = artwork[name]?.base
+  // `baseOverride` lets us run right after an upload, before React state settles.
+  // `auto` softens messaging when it was triggered automatically (e.g. no key).
+  const generateExpressions = async (name, baseOverride, auto = false) => {
+    const base = baseOverride || artwork[name]?.base
     if (!base) {
       setGenMsg(`Upload a "Normal" picture for ${name} first.`)
       return
     }
     setGenBusy(name)
-    setGenMsg(`Generating expressions for ${name}… (this takes ~30s and costs a few cents)`)
+    setGenMsg(`✨ Auto-creating expressions for ${name}… (takes ~30s, costs a few cents)`)
     try {
       const res = await fetch('/api/generate-expressions', {
         method: 'POST',
@@ -219,7 +240,13 @@ export default function Home() {
       })
       const data = await res.json()
       if (!res.ok) {
-        setGenMsg(data.message || 'Generation failed.')
+        // No API key (503): in auto mode this isn't an error — the character
+        // still animates with the free expression cues.
+        if (auto && res.status === 503) {
+          setGenMsg(`Uploaded ${name}! It will animate with free auto-expressions. (Add GEMINI_API_KEY on Render to auto-paint real AI expressions.)`)
+        } else {
+          setGenMsg(data.message || 'Generation failed.')
+        }
         setGenBusy('')
         return
       }
@@ -273,11 +300,60 @@ export default function Home() {
     }
   }
 
+  // Premium (paid) path: real photoreal lip-sync of the selected character's
+  // uploaded photo, rendered by a talking-head service via /api/talking-head.
+  const generateTalkingHead = async (script) => {
+    const base = artwork[characterName]?.base
+    if (!base) {
+      alert(`Premium lip-sync needs a "Normal" photo of ${characterName}. Upload one in the artwork section first.`)
+      return
+    }
+    if (base.startsWith('data:image/gif')) {
+      alert('Premium lip-sync needs a still photo, not a GIF. Upload a Normal picture.')
+      return
+    }
+    setIsGenerating(true)
+    setStatusMessage('Creating premium lip-sync… this runs on a paid service and can take 1–3 minutes.')
+    try {
+      const voiceId = voices[characterName] || getCharacter(characterName).voiceId
+      const res = await fetch('/api/talking-head', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: base, text: script, voiceId }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.message || 'Talking-head generation failed.')
+      setVideos((prev) => [
+        {
+          id: Date.now(),
+          title: videoTitle,
+          character: characterName,
+          date: new Date().toLocaleDateString(),
+          url: data.videoUrl,
+          external: true,
+        },
+        ...prev,
+      ])
+      setVideoGenerated(true)
+      setTimeout(() => setVideoGenerated(false), 3000)
+    } catch (error) {
+      alert('Premium lip-sync failed: ' + error.message)
+    } finally {
+      setIsGenerating(false)
+      setStatusMessage('')
+    }
+  }
+
   const handleGenerateVideo = async () => {
     const script = (analysis?.script || textContent).trim()
 
     if (!script || !videoTitle.trim()) {
       alert('Please add a story and a title first! (Tip: "Analyze Story with AI" gives a nicer script.)')
+      return
+    }
+
+    if (premiumLipSync) {
+      await generateTalkingHead(script)
       return
     }
 
@@ -294,6 +370,7 @@ export default function Home() {
         mode: use3D ? '3d' : '2d',
         artwork,
         showCaptions: showSubtitles,
+        voices,
       })
 
       const url = URL.createObjectURL(blob)
@@ -417,10 +494,20 @@ export default function Home() {
 
               <p className={styles.hint}>
                 ✨ <strong>AI expressions (paid):</strong> upload just the
-                “Normal” picture, then click <strong>AI</strong> to auto-create
-                all the other expressions of the same character. Needs
-                GEMINI_API_KEY on Render (~$0.50 per character). Optional outfit:
+                “Normal” picture and the tool auto-creates all the other
+                expressions of the same character (or click <strong>✨ AI</strong>{' '}
+                to re-run). Needs GEMINI_API_KEY on Render (~$0.50 per
+                character); without a key the character still animates with the
+                free auto-cues. Optional outfit:
               </p>
+              <label className={styles.toggleRow}>
+                <input
+                  type="checkbox"
+                  checked={autoAI}
+                  onChange={(e) => setAutoAI(e.target.checked)}
+                />
+                <span>🤖 Auto-create AI expressions when I upload a Normal photo</span>
+              </label>
               <input
                 type="text"
                 className={styles.input}
@@ -433,6 +520,20 @@ export default function Home() {
               {characters.map((char) => (
                 <div key={char.name} className={styles.artRow}>
                   <span className={styles.artName}>{char.name}</span>
+                  <select
+                    className={styles.voiceSelect}
+                    value={voices[char.name] || char.voiceId}
+                    onChange={(e) =>
+                      setVoices((prev) => ({ ...prev, [char.name]: e.target.value }))
+                    }
+                    title="Voice for this character"
+                  >
+                    {VOICES.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        🔊 {v.label}
+                      </option>
+                    ))}
+                  </select>
                   <button
                     type="button"
                     className={styles.artBtn}
@@ -481,6 +582,19 @@ export default function Home() {
                 onChange={(e) => setUse3D(e.target.checked)}
               />
               <span>🧊 3D mode (beta) — render characters in 3D</span>
+            </label>
+
+            <label className={styles.toggleRow}>
+              <input
+                type="checkbox"
+                checked={premiumLipSync}
+                onChange={(e) => setPremiumLipSync(e.target.checked)}
+              />
+              <span>
+                🎤 Premium lip-sync (paid, beta) — photoreal mouth movement of
+                the selected character’s uploaded photo. Needs REPLICATE_API_TOKEN
+                on Render; ~1–3 min per video.
+              </span>
             </label>
 
             <button
@@ -612,10 +726,12 @@ export default function Home() {
                     <div className={styles.videoActions}>
                       <a
                         href={video.url}
-                        download={`${video.title}.webm`}
+                        {...(video.external
+                          ? { target: '_blank', rel: 'noreferrer' }
+                          : { download: `${video.title}.webm` })}
                         className={styles.downloadButton}
                       >
-                        📥 Download
+                        {video.external ? '▶️ Open / Download (MP4)' : '📥 Download'}
                       </a>
                     </div>
                   </div>

@@ -198,6 +198,17 @@
   flex-wrap: wrap;
 }
 
+.voiceSelect {
+  padding: 0.3rem 0.4rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  color: #475569;
+  background: #f8fafc;
+  cursor: pointer;
+  max-width: 210px;
+}
+
 .artClear {
   border: none;
   background: #fee2e2;

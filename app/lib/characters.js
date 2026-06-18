@@ -10,10 +10,44 @@
 // characters still sound clearly different). Indian voices: en-IN-PrabhatNeural
 // (male), en-IN-NeerjaNeural (female), hi-IN-MadhurNeural (male), hi-IN-SwaraNeural (female).
 export const CHARACTERS = {
-  Dudu: { label: 'Dudu', type: 'panda', fur: '#ffffff', shade: '#e7ecf3', ear: '#3b3b40', cheek: '#ffb0c8', accent: '#3b3b40', voice: 'en-IN-PrabhatNeural', pitch: 1.04, fallbackPitch: 0.85 },
-  Bubu: { label: 'Bubu', type: 'bear',  fur: '#cf9466', shade: '#b97e51', ear: '#a96b3d', cheek: '#ff97a6', accent: '#4f3220', voice: 'en-IN-NeerjaNeural',  pitch: 1.08, fallbackPitch: 1.18 },
-  Momo: { label: 'Momo', type: 'bear',  fur: '#ffc2da', shade: '#f6a8c6', ear: '#ef8fb3', cheek: '#ff7ba3', accent: '#7c4a5c', voice: 'hi-IN-SwaraNeural',   pitch: 1.05, fallbackPitch: 1.12 },
-  Zara: { label: 'Zara', type: 'panda', fur: '#bfe6d8', shade: '#a4d8c7', ear: '#7cc6ae', cheek: '#ff9aa6', accent: '#355a4d', voice: 'hi-IN-MadhurNeural',   pitch: 0.98, fallbackPitch: 0.9 },
+  Dudu: { label: 'Dudu', type: 'panda', fur: '#ffffff', shade: '#e7ecf3', ear: '#3b3b40', cheek: '#ffb0c8', accent: '#3b3b40', voiceId: 'prabhat' },
+  Bubu: { label: 'Bubu', type: 'bear',  fur: '#cf9466', shade: '#b97e51', ear: '#a96b3d', cheek: '#ff97a6', accent: '#4f3220', voiceId: 'neerja' },
+  Momo: { label: 'Momo', type: 'bear',  fur: '#ffc2da', shade: '#f6a8c6', ear: '#ef8fb3', cheek: '#ff7ba3', accent: '#7c4a5c', voiceId: 'swara' },
+  Zara: { label: 'Zara', type: 'panda', fur: '#bfe6d8', shade: '#a4d8c7', ear: '#7cc6ae', cheek: '#ff9aa6', accent: '#355a4d', voiceId: 'madhur-deep' },
+}
+
+// Pickable voices. All are free Microsoft Edge neural voices — the only Indian
+// voices available on the keyless endpoint are these 5 base voices
+// (en-IN-Neerja, en-IN-NeerjaExpressive, en-IN-Prabhat, hi-IN-Swara,
+// hi-IN-Madhur), so the extra options are pitch/rate variants that give each
+// character a clearly different sound. `pitch`/`rate` are SSML percentages
+// baked into delivery; emotion adds more on top (see ttsServer.js).
+// `fallbackPitch` is a client playbackRate tweak used only when we fall back to
+// the generic Google voice, so the characters still sound different.
+export const VOICES = [
+  { id: 'neerja',       label: 'Neerja — Indian English, female (warm)',    lang: 'Indian English', gender: 'female', voice: 'en-IN-NeerjaNeural',           pitch: '+0%',  rate: '+0%', fallbackPitch: 1.05 },
+  { id: 'neerja-bright',label: 'Aanya — Indian English, female (bright)',   lang: 'Indian English', gender: 'female', voice: 'en-IN-NeerjaNeural',           pitch: '+14%', rate: '+4%', fallbackPitch: 1.18 },
+  { id: 'neerja-expr',  label: 'Neha — Indian English, female (lively)',    lang: 'Indian English', gender: 'female', voice: 'en-IN-NeerjaExpressiveNeural', pitch: '+0%',  rate: '+3%', fallbackPitch: 1.08 },
+  { id: 'prabhat',      label: 'Prabhat — Indian English, male',            lang: 'Indian English', gender: 'male',   voice: 'en-IN-PrabhatNeural',          pitch: '+0%',  rate: '+0%', fallbackPitch: 0.92 },
+  { id: 'prabhat-deep', label: 'Arjun — Indian English, male (deep)',       lang: 'Indian English', gender: 'male',   voice: 'en-IN-PrabhatNeural',          pitch: '-14%', rate: '-3%', fallbackPitch: 0.82 },
+  { id: 'swara',        label: 'Swara — Hindi, female',                     lang: 'Hindi',          gender: 'female', voice: 'hi-IN-SwaraNeural',            pitch: '+0%',  rate: '+0%', fallbackPitch: 1.05 },
+  { id: 'swara-bright', label: 'Priya — Hindi, female (bright)',            lang: 'Hindi',          gender: 'female', voice: 'hi-IN-SwaraNeural',            pitch: '+14%', rate: '+4%', fallbackPitch: 1.16 },
+  { id: 'madhur',       label: 'Madhur — Hindi, male',                      lang: 'Hindi',          gender: 'male',   voice: 'hi-IN-MadhurNeural',           pitch: '+0%',  rate: '+0%', fallbackPitch: 0.92 },
+  { id: 'madhur-deep',  label: 'Vikram — Hindi, male (deep)',               lang: 'Hindi',          gender: 'male',   voice: 'hi-IN-MadhurNeural',           pitch: '-14%', rate: '-3%', fallbackPitch: 0.80 },
+]
+
+const VOICE_BY_ID = Object.fromEntries(VOICES.map((v) => [v.id, v]))
+
+export function getVoicePreset(id) {
+  return VOICE_BY_ID[id] || VOICE_BY_ID.neerja
+}
+
+// The voice preset for a character, honouring a per-character override (a voice
+// id chosen in the UI) and falling back to the character's default.
+export function voiceForCharacter(name, overrides) {
+  const cfg = getCharacter(name)
+  const id = (overrides && overrides[name]) || cfg.voiceId || 'neerja'
+  return getVoicePreset(id)
 }
 
 // Who appears alongside each character (the duo / couple).

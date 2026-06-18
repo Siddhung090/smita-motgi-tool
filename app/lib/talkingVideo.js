@@ -6,7 +6,7 @@
 
 import {
   getCharacter, getPartner, drawSceneBackground, drawCharacter, drawProp,
-  computePose, EMOTIONS, SETTINGS, ACTIONS,
+  computePose, voiceForCharacter, EMOTIONS, SETTINGS, ACTIONS,
 } from './characters'
 
 // --- uploaded-artwork rendering ----------------------------------------------
@@ -115,13 +115,48 @@ function drawArtworkChar(ctx, imgs, pose, { cx, baselineY, maxW, maxH, mouth, em
   // never blow up or overlap the other character.
   const s = Math.min(maxH / im.height, maxW / im.width)
   const w = im.width * s, h = im.height * s
-  // If there is no dedicated "talking" image, give a single photo a small
-  // squash-bob while speaking so it reads as talking.
-  const talkBob = speaking && !imgs.talk ? 1 + Math.sin(t * 26) * 0.025 * (0.5 + mouth) : 1
+
+  // --- layered motion so a flat photo really "comes alive" -------------------
+  // 1. Idle breathing + a gentle sway/rock, always on (even when listening).
+  const breathe = 1 + Math.sin(t * 1.8) * 0.012
+  let sway = Math.sin(t * 1.1) * 3            // horizontal drift (px)
+  let bob = Math.sin(t * 1.8) * 3             // vertical bob (px)
+  let tilt = Math.sin(t * 0.9) * 0.02         // gentle head/body rock (rad)
+  let squash = pose.squash
+  let stretchY = 1
+
+  // 2. Talking: a livelier bob + a subtle vertical "jaw" stretch tied to volume.
+  //    (When a dedicated "talk" image exists we keep it gentler — the swap
+  //    already sells the speech.)
+  if (speaking) {
+    const amp = 0.5 + mouth
+    const fast = Math.sin(t * 24)
+    bob += fast * (imgs.talk ? 1.2 : 2.4) * amp
+    stretchY = 1 + (imgs.talk ? 0.01 : 0.03) * amp * (0.5 + 0.5 * fast)
+    tilt += Math.sin(t * 12) * 0.01 * amp
+  }
+
+  // 3. Emotion gives the whole body a posture / accent on top of the action.
+  switch (emotion) {
+    case 'sad':
+      bob += 5; tilt += 0.05; squash += 0.02; break               // droop + lean
+    case 'sleepy':
+      bob += 6; tilt += Math.sin(t * 0.7) * 0.06; break            // slow nod-off
+    case 'happy': case 'excited':
+      bob -= Math.abs(Math.sin(t * 4)) * 6; break                  // little hops
+    case 'love':
+      tilt += Math.sin(t * 1.6) * 0.04; break                      // sway dreamily
+    case 'surprised':
+      bob -= 4; squash -= 0.03; break                              // pull up, startled
+    case 'angry':
+      sway += Math.sin(t * 22) * 2; tilt += Math.sin(t * 22) * 0.015; break // tense shake
+    default: break
+  }
+
   ctx.save()
-  ctx.translate(cx + pose.dx * 1.3, baselineY + pose.dy * 1.4)
-  ctx.rotate(-pose.lean)
-  ctx.scale(1, (1 - pose.squash) * talkBob)
+  ctx.translate(cx + pose.dx * 1.3 + sway, baselineY + pose.dy * 1.4 + bob)
+  ctx.rotate(-pose.lean + tilt)
+  ctx.scale(breathe, breathe * (1 - squash) * stretchY)
   if (pose.turnAway) ctx.scale(-1, 1)
   ctx.drawImage(im, -w / 2, -h, w, h)
   ctx.restore()
@@ -320,7 +355,7 @@ const TAG_MAP = {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-export async function createTalkingVideo({ script, scenes, character, canvas, onStatus, mode, artwork, showCaptions = false }) {
+export async function createTalkingVideo({ script, scenes, character, canvas, onStatus, mode, artwork, showCaptions = false, voices }) {
   if (typeof window === 'undefined') throw new Error('Must run in the browser.')
   const AudioCtx = window.AudioContext || window.webkitAudioContext
   if (!AudioCtx || typeof MediaRecorder === 'undefined' || !canvas.captureStream) {
@@ -341,15 +376,25 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
   for (const scene of story) {
     scene.buffers = []
     // Voice belongs to whoever speaks this scene ('both' uses the main voice).
-    const who = scene.speaker === 'partner' ? partnerCfg : mainCfg
-    scene.voice = who.voice
+    // Honour any per-character voice chosen in the UI.
+    const whoName = scene.speaker === 'partner' ? partnerCfg.label : mainCfg.label
+    const preset = voiceForCharacter(whoName, voices)
+    scene.voice = preset.voice
     let src = 'edge'
     for (const chunk of splitIntoChunks(scene.narration)) {
       if (onStatus) onStatus(`Generating voice ${++done}/${total}...`)
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: chunk, voice: scene.voice }),
+        // Send the scene emotion + the preset's base prosody so the voice
+        // actually sounds happy/sad/angry per scene.
+        body: JSON.stringify({
+          text: chunk,
+          voice: preset.voice,
+          emotion: scene.emotion,
+          rate: preset.rate,
+          pitch: preset.pitch,
+        }),
       })
       if (!res.ok) {
         const info = await res.json().catch(() => ({}))
@@ -359,9 +404,10 @@ export async function createTalkingVideo({ script, scenes, character, canvas, on
       const arr = await res.arrayBuffer()
       scene.buffers.push(await audioCtx.decodeAudioData(arr))
     }
-    // Good Edge voices keep pitch subtle; the Google fallback uses a stronger
-    // pitch so the two characters still sound clearly different.
-    scene.pitch = src === 'google' ? (who.fallbackPitch || 1) : (who.pitch || 1)
+    // Edge voices already carry the pitch/expression in the audio (via SSML), so
+    // we play them at normal rate. The generic Google fallback can't do that, so
+    // we apply the preset's playbackRate tweak to keep voices distinct.
+    scene.pitch = src === 'google' ? (preset.fallbackPitch || 1) : 1
   }
 
   // 2. Audio graph: clip → analyser (mouth) + speakers + recording dest.
