@@ -160,6 +160,11 @@ export default function Home() {
   const [genOutfit, setGenOutfit] = useState('')
   const [genBusy, setGenBusy] = useState('')
   const [genMsg, setGenMsg] = useState('')
+  const [aiPrompt, setAiPrompt] = useState('')
+  const [aiAspect, setAiAspect] = useState('9:16')
+  const [aiModel, setAiModel] = useState('')
+  const [aiBusy, setAiBusy] = useState(false)
+  const [aiStatus, setAiStatus] = useState('')
   const [analysis, setAnalysis] = useState(null)
   const [analysisError, setAnalysisError] = useState('')
 
@@ -368,6 +373,65 @@ export default function Home() {
     } finally {
       setIsGenerating(false)
       setStatusMessage('')
+    }
+  }
+
+  // Real text-to-video via fal.ai (paid). Submits the job, then polls until ready.
+  const handleAiVideo = async () => {
+    if (!aiPrompt.trim()) {
+      setAiStatus('⚠️ Write a prompt describing the video first.')
+      return
+    }
+    setAiBusy(true)
+    setAiStatus('Submitting to fal.ai…')
+    try {
+      const sub = await fetch('/api/ai-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'submit', prompt: aiPrompt, aspectRatio: aiAspect, model: aiModel || undefined }),
+      })
+      const subData = await sub.json()
+      if (!sub.ok) {
+        setAiStatus('⚠️ ' + (subData.message || 'Submit failed.'))
+        setAiBusy(false)
+        return
+      }
+      const { statusUrl, responseUrl } = subData
+      let tries = 0
+      const poll = async () => {
+        tries++
+        try {
+          const st = await fetch('/api/ai-video', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'status', statusUrl, responseUrl }),
+          })
+          const stData = await st.json()
+          if (!st.ok) { setAiStatus('⚠️ ' + (stData.message || 'Failed.')); setAiBusy(false); return }
+          if (stData.status === 'COMPLETED') {
+            if (stData.videoUrl) {
+              setVideos((prev) => [
+                { id: Date.now(), title: videoTitle || 'AI Video', character: 'AI', date: new Date().toLocaleDateString(), url: stData.videoUrl, external: true },
+                ...prev,
+              ])
+              setAiStatus('✅ Done! See it in Recent Videos.')
+            } else {
+              setAiStatus('⚠️ ' + (stData.message || 'No video returned.'))
+            }
+            setAiBusy(false)
+            return
+          }
+          setAiStatus(`Generating… (${stData.status || 'working'}) ~${tries * 5}s elapsed`)
+          if (tries > 120) { setAiStatus('⚠️ Timed out. Try again or a different model.'); setAiBusy(false); return }
+          setTimeout(poll, 5000)
+        } catch (e) {
+          setAiStatus('⚠️ ' + e.message); setAiBusy(false)
+        }
+      }
+      setTimeout(poll, 4000)
+    } catch (e) {
+      setAiStatus('⚠️ ' + e.message)
+      setAiBusy(false)
     }
   }
 
@@ -660,6 +724,40 @@ export default function Home() {
               )}
             </button>
 
+            <div className={styles.aiVideoBox}>
+              <label>🎥 AI Video (paid · fal.ai)</label>
+              <p className={styles.hint}>
+                Real text-to-video — describe any scene/character (a cat, Bubu
+                Dudu, anything) and AI generates real video. Needs FAL_KEY on
+                Render + credits. Costs a few dollars and takes a few minutes per
+                clip.
+              </p>
+              <textarea
+                className={styles.textarea}
+                placeholder="e.g. A cute brown bear and a white panda sharing chai at an Indian street stall, cartoon style, warm evening light"
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+              />
+              <div className={styles.aiRow}>
+                <select className={styles.input} value={aiAspect} onChange={(e) => setAiAspect(e.target.value)}>
+                  <option value="9:16">Vertical 9:16 (Reels/Shorts)</option>
+                  <option value="16:9">Wide 16:9</option>
+                  <option value="1:1">Square 1:1</option>
+                </select>
+              </div>
+              <input
+                type="text"
+                className={styles.input}
+                placeholder="Advanced: fal.ai model id (leave blank for default)"
+                value={aiModel}
+                onChange={(e) => setAiModel(e.target.value)}
+              />
+              <button onClick={handleAiVideo} disabled={aiBusy} className={styles.analyzeButton}>
+                {aiBusy ? (<><span className={styles.spinner}></span>Generating AI video…</>) : '🎬 Generate AI Video'}
+              </button>
+              {aiStatus && <div className={styles.statusMessage}>{aiStatus}</div>}
+            </div>
+
             <canvas
               ref={canvasRef}
               width={640}
@@ -752,6 +850,9 @@ export default function Home() {
                         <strong>{video.character}</strong> • {video.date}
                       </p>
                     </div>
+                    {video.external && (
+                      <video src={video.url} controls className={styles.videoPreview} />
+                    )}
                     <div className={styles.videoActions}>
                       <a
                         href={video.url}
