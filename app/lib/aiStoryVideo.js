@@ -91,7 +91,7 @@ function loadVideo(src) {
   })
 }
 
-export async function createAiStoryVideo({ script, style, aspect = '9:16', model, character = 'Dudu', targetSeconds = 30, voices, onStatus }) {
+export async function createAiStoryVideo({ script, scenes: inputScenes, style, aspect = '9:16', model, character = 'Dudu', targetSeconds = 30, voices, onStatus }) {
   if (typeof window === 'undefined') throw new Error('Must run in the browser.')
   const AudioCtx = window.AudioContext || window.webkitAudioContext
   if (!AudioCtx || typeof MediaRecorder === 'undefined') {
@@ -100,8 +100,30 @@ export async function createAiStoryVideo({ script, style, aspect = '9:16', model
 
   const mainCfg = getCharacter(character)
   const partnerCfg = getPartner(character)
-  const scenes = parseScenes(script, mainCfg.label)
-  if (!scenes.length) throw new Error('Add a story (dialogue lines) first.')
+  const partnerL = partnerCfg.label.toLowerCase()
+  const mapSpeaker = (raw) => {
+    const s = (raw || '').toLowerCase()
+    if (s.includes('both')) return 'both'
+    if (s.includes(partnerL)) return 'partner'
+    return 'main'
+  }
+
+  // Prefer AI-written scenes (separate visual for the clip + spoken narration);
+  // otherwise fall back to parsing the raw dialogue lines.
+  let scenes
+  if (Array.isArray(inputScenes) && inputScenes.length) {
+    scenes = inputScenes
+      .filter((s) => (s.narration || '').trim())
+      .map((s) => ({
+        narration: s.narration.trim(),
+        visual: (s.visual || s.narration).trim(),
+        speaker: mapSpeaker(s.speaker),
+      }))
+  } else {
+    scenes = parseScenes(script, mainCfg.label)
+    scenes.forEach((s) => { s.visual = s.narration })
+  }
+  if (!scenes.length) throw new Error('Add a story first.')
   // Length picker → number of ~5s clips (also caps cost/time).
   const maxScenes = Math.max(1, Math.min(12, Math.round((targetSeconds || 30) / 5)))
   if (scenes.length > maxScenes) scenes.splice(maxScenes)
@@ -114,7 +136,7 @@ export async function createAiStoryVideo({ script, style, aspect = '9:16', model
   for (let i = 0; i < scenes.length; i++) {
     if (onStatus) onStatus(`Submitting AI clip ${i + 1}/${scenes.length}…`)
     const prompt =
-      `${style ? style.trim() + '. ' : ''}Scene: ${scenes[i].narration}. ` +
+      `${style ? style.trim() + '. ' : ''}Scene: ${scenes[i].visual}. ` +
       `2D cartoon animation, consistent cute characters, soft pastel colors.`
     const r = await fetch('/api/ai-video', {
       method: 'POST',

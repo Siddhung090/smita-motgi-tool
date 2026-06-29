@@ -406,11 +406,39 @@ export default function Home() {
       return
     }
     setAiBusy(true)
-    setAiStatus('Starting AI story… this can take 10–20 minutes and costs a few cents per line.')
+    setAiStatus('Starting…')
     try {
+      // If the user wrote a short idea (not Dudu:/Bubu: dialogue lines), let the
+      // AI turn it into a full multi-scene story first.
+      const looksLikeDialogue =
+        /\n/.test(textContent.trim()) ||
+        /^(dudu|bubu|momo|zara|both)\b\s*[:(]/im.test(textContent)
+      let scenes = analysis?.scenes
+      if ((!scenes || !scenes.length) && !looksLikeDialogue) {
+        setAiStatus('✍️ Writing the story with AI…')
+        const r = await fetch('/api/analyze-story', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: textContent, character: characterName, videoLink }),
+        })
+        const d = await r.json().catch(() => ({}))
+        if (r.ok && d.analysis?.scenes?.length) {
+          scenes = d.analysis.scenes
+          setAnalysis(d.analysis)
+        } else {
+          setAiStatus(
+            '⚠️ ' + (d.message || 'Could not write the story.') +
+            ' To turn a short idea into a full story, add ANTHROPIC_API_KEY on Render — or write the lines yourself like "Dudu: ..." and "Bubu: ...".'
+          )
+          setAiBusy(false)
+          return
+        }
+      }
+
       const { createAiStoryVideo } = await import('./lib/aiStoryVideo')
       const blob = await createAiStoryVideo({
         script: textContent,
+        scenes,
         style: aiPrompt,
         aspect: aiAspect,
         model: aiModel || undefined,

@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk'
 
-// Default to the most capable Claude model; override via env if desired.
-const MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-4-8'
+// Default to a fast, cheap model for story-writing; override via env if desired.
+const MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001'
 
 // Structured-output schema: forces Claude to return a parseable script + character profile.
 const ANALYSIS_SCHEMA = {
