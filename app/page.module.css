@@ -135,6 +135,20 @@
   border-radius: 10px;
 }
 
+.advanced {
+  margin-top: 1.25rem;
+  border-top: 1px solid #e5e7eb;
+  padding-top: 0.75rem;
+}
+
+.advanced summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #6b7280;
+  padding: 0.5rem 0;
+  user-select: none;
+}
+
 .toggleRow {
   display: flex;
   align-items: center;

@@ -91,7 +91,7 @@ function loadVideo(src) {
   })
 }
 
-export async function createAiStoryVideo({ script, style, aspect = '9:16', model, character = 'Dudu', onStatus }) {
+export async function createAiStoryVideo({ script, style, aspect = '9:16', model, character = 'Dudu', targetSeconds = 30, voices, onStatus }) {
   if (typeof window === 'undefined') throw new Error('Must run in the browser.')
   const AudioCtx = window.AudioContext || window.webkitAudioContext
   if (!AudioCtx || typeof MediaRecorder === 'undefined') {
@@ -102,8 +102,13 @@ export async function createAiStoryVideo({ script, style, aspect = '9:16', model
   const partnerCfg = getPartner(character)
   const scenes = parseScenes(script, mainCfg.label)
   if (!scenes.length) throw new Error('Add a story (dialogue lines) first.')
-  if (scenes.length > 12) scenes.splice(12) // cap cost/time
-  scenes.forEach((s) => { s.voice = s.speaker === 'partner' ? partnerCfg.voice : mainCfg.voice })
+  // Length picker → number of ~5s clips (also caps cost/time).
+  const maxScenes = Math.max(1, Math.min(12, Math.round((targetSeconds || 30) / 5)))
+  if (scenes.length > maxScenes) scenes.splice(maxScenes)
+  scenes.forEach((s) => {
+    const cfg = s.speaker === 'partner' ? partnerCfg : mainCfg
+    s.voice = (voices && voices[cfg.label]) || cfg.voice
+  })
 
   // 1. Submit every clip to fal (they queue and render in parallel).
   for (let i = 0; i < scenes.length; i++) {

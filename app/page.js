@@ -162,6 +162,7 @@ export default function Home() {
   const [genMsg, setGenMsg] = useState('')
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiAspect, setAiAspect] = useState('9:16')
+  const [aiLength, setAiLength] = useState(30)
   const [aiModel, setAiModel] = useState('')
   const [aiBusy, setAiBusy] = useState(false)
   const [aiStatus, setAiStatus] = useState('')
@@ -393,6 +394,8 @@ export default function Home() {
         aspect: aiAspect,
         model: aiModel || undefined,
         character: characterName,
+        targetSeconds: aiLength,
+        voices,
         onStatus: setAiStatus,
       })
       const url = URL.createObjectURL(blob)
@@ -565,6 +568,49 @@ export default function Home() {
                 className={styles.input}
               />
             </div>
+
+            {/* ---- Simple primary flow: make a real AI video with voices ---- */}
+            <div className={styles.formGroup}>
+              <label>Characters &amp; Style</label>
+              <input
+                type="text"
+                className={styles.input}
+                placeholder="e.g. cute brown bear (Bubu) and white panda (Dudu), 2D cartoon, Indian setting"
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+              />
+            </div>
+
+            <div className={styles.formGroup}>
+              <label>Length &amp; Format</label>
+              <div className={styles.aiRow}>
+                <select className={styles.input} value={aiLength} onChange={(e) => setAiLength(Number(e.target.value))}>
+                  {[10, 20, 30, 40, 50, 60].map((s) => (
+                    <option key={s} value={s}>{s} seconds</option>
+                  ))}
+                </select>
+                <select className={styles.input} value={aiAspect} onChange={(e) => setAiAspect(e.target.value)}>
+                  <option value="9:16">Vertical 9:16</option>
+                  <option value="16:9">Wide 16:9</option>
+                  <option value="1:1">Square 1:1</option>
+                </select>
+              </div>
+            </div>
+
+            <button onClick={handleAiStory} disabled={aiBusy} className={styles.generateButton}>
+              {aiBusy ? (<><span className={styles.spinner}></span>Making your video…</>) : '🎬 Generate Video (AI + voices)'}
+            </button>
+            {aiStatus && <div className={styles.statusMessage}>{aiStatus}</div>}
+            <p className={styles.hint}>
+              Write your story above as <strong>Dudu:</strong> / <strong>Bubu:</strong> lines.
+              The AI makes a clip for each line, adds each character&apos;s voice, and stitches
+              one video. Paid (fal.ai) — a few cents per line, ~10–20 min. Pick a shorter length
+              for cheaper, faster tests.
+            </p>
+
+            {/* ---- Everything else tucked away to keep it simple ---- */}
+            <details className={styles.advanced}>
+              <summary>⚙️ Advanced options (free cartoon mode, artwork, voices, single clip)</summary>
 
             <div className={styles.formGroup}>
               <label>Choose Character</label>
@@ -870,6 +916,7 @@ export default function Home() {
                 )}
               </div>
             )}
+            </details>
           </section>
 
           <section className={styles.preview}>
