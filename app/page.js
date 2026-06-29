@@ -163,6 +163,7 @@ export default function Home() {
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiAspect, setAiAspect] = useState('9:16')
   const [aiLength, setAiLength] = useState(30)
+  const [spentEst, setSpentEst] = useState(0)
   const [aiModel, setAiModel] = useState('')
   const [aiBusy, setAiBusy] = useState(false)
   const [aiStatus, setAiStatus] = useState('')
@@ -379,6 +380,25 @@ export default function Home() {
 
   // Real text-to-video via fal.ai (paid). Submits the job, then polls until ready.
   // Multi-clip AI story: one AI clip per line of the story + voices, stitched.
+  // Rough cost estimate (fal can't be queried with an inference-scoped key).
+  const EST_PER_CLIP = 0.05
+  const aiClips = Math.max(1, Math.min(12, Math.round(aiLength / 5)))
+  const estCost = aiClips * EST_PER_CLIP
+
+  useEffect(() => {
+    try {
+      const v = parseFloat(localStorage.getItem('falSpentEst'))
+      if (!isNaN(v)) setSpentEst(v)
+    } catch {}
+  }, [])
+
+  const addSpent = (amt) =>
+    setSpentEst((p) => {
+      const n = p + amt
+      try { localStorage.setItem('falSpentEst', String(n)) } catch {}
+      return n
+    })
+
   const handleAiStory = async () => {
     if (!textContent.trim()) {
       setAiStatus('⚠️ Write your story (the dialogue lines) in the "Your Story/Content" box above first.')
@@ -403,6 +423,7 @@ export default function Home() {
         { id: Date.now(), title: videoTitle || 'AI Story', character: 'AI', date: new Date().toLocaleDateString(), url },
         ...prev,
       ])
+      addSpent(estCost)
       setAiStatus('✅ AI story done! See it in Recent Videos.')
     } catch (e) {
       setAiStatus('⚠️ ' + e.message)
@@ -447,6 +468,7 @@ export default function Home() {
                 { id: Date.now(), title: videoTitle || 'AI Video', character: 'AI', date: new Date().toLocaleDateString(), url: stData.videoUrl, external: true },
                 ...prev,
               ])
+              addSpent(EST_PER_CLIP)
               setAiStatus('✅ Done! See it in Recent Videos.')
             } else {
               setAiStatus('⚠️ ' + (stData.message || 'No video returned.'))
@@ -600,6 +622,19 @@ export default function Home() {
             <button onClick={handleAiStory} disabled={aiBusy} className={styles.generateButton}>
               {aiBusy ? (<><span className={styles.spinner}></span>Making your video…</>) : '🎬 Generate Video (AI + voices)'}
             </button>
+
+            <div className={styles.creditRow}>
+              <span>💸 This {aiLength}s video ≈ <strong>${estCost.toFixed(2)}</strong> ({aiClips} clips, rough estimate)</span>
+              <span>
+                Spent so far (est.): <strong>${spentEst.toFixed(2)}</strong>
+                {' · '}
+                <a href="#" onClick={(e) => { e.preventDefault(); setSpentEst(0); try { localStorage.setItem('falSpentEst', '0') } catch {} }}>reset</a>
+              </span>
+              <a href="https://fal.ai/dashboard/usage" target="_blank" rel="noreferrer">
+                💳 Check real remaining credits on fal.ai →
+              </a>
+            </div>
+
             {aiStatus && <div className={styles.statusMessage}>{aiStatus}</div>}
             <p className={styles.hint}>
               Write your story above as <strong>Dudu:</strong> / <strong>Bubu:</strong> lines.

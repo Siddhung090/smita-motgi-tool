@@ -135,6 +135,21 @@
   border-radius: 10px;
 }
 
+.creditRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.6rem 0 0.2rem;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.creditRow a {
+  color: #7c3aed;
+  font-weight: 600;
+  text-decoration: none;
+}
+
 .advanced {
   margin-top: 1.25rem;
   border-top: 1px solid #e5e7eb;
