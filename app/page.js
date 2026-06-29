@@ -460,6 +460,75 @@ export default function Home() {
     setAiBusy(false)
   }
 
+  // Premium ~8s clip where the characters actually speak (audio-native model
+  // like Veo 3). Uses the clip's OWN voice/lip-sync — no narrator overlay.
+  const handlePremiumTalk = async () => {
+    if (!textContent.trim()) {
+      setAiStatus('⚠️ Write at least one or two dialogue lines in the Story box.')
+      return
+    }
+    if (!window.confirm('This premium talking clip uses ~$3–6 of your fal credits for one ~8-second clip. Continue?')) return
+    setAiBusy(true)
+    setAiStatus('Submitting premium talking clip…')
+    try {
+      const dlg = textContent
+        .split(/\n+/).map((l) => l.trim()).filter(Boolean).slice(0, 2)
+        .map((l) => l.replace(/^([A-Za-z]+)\s*(?:\([^)]*\))?\s*:\s*/, (m, n) => `${n} says: `))
+        .join(' ')
+      const prompt =
+        `${aiPrompt || 'two cute cartoon characters'}. ${dlg} ` +
+        `The characters actually say these lines out loud, lip-synced, with clear distinct voices. ` +
+        `2D cartoon animation, funny and expressive.`
+      const model = aiModel || 'fal-ai/veo3/fast'
+      const sub = await fetch('/api/ai-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'submit', prompt, aspectRatio: aiAspect, model }),
+      })
+      const subData = await sub.json()
+      if (!sub.ok) {
+        setAiStatus('⚠️ ' + (subData.message || 'Submit failed.') + ' (If it mentions the model, paste a Veo text-to-video id from fal Explore.)')
+        setAiBusy(false)
+        return
+      }
+      const { statusUrl, responseUrl } = subData
+      let tries = 0
+      const poll = async () => {
+        tries++
+        try {
+          const st = await fetch('/api/ai-video', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'status', statusUrl, responseUrl }),
+          })
+          const d = await st.json()
+          if (!st.ok) { setAiStatus('⚠️ ' + (d.message || 'Failed.')); setAiBusy(false); return }
+          if (d.status === 'COMPLETED') {
+            if (d.videoUrl) {
+              setVideos((prev) => [
+                { id: Date.now(), title: videoTitle || 'Talking Clip', character: 'AI', date: new Date().toLocaleDateString(), url: d.videoUrl, external: true },
+                ...prev,
+              ])
+              addSpent(4)
+              setAiStatus('✅ Talking clip done! See it in Recent Videos.')
+            } else {
+              setAiStatus('⚠️ No video returned.')
+            }
+            setAiBusy(false)
+            return
+          }
+          setAiStatus(`Generating talking clip… (${d.status || 'working'}) ~${tries * 5}s elapsed`)
+          if (tries > 150) { setAiStatus('⚠️ Timed out. Try again.'); setAiBusy(false); return }
+          setTimeout(poll, 5000)
+        } catch (e) { setAiStatus('⚠️ ' + e.message); setAiBusy(false) }
+      }
+      setTimeout(poll, 5000)
+    } catch (e) {
+      setAiStatus('⚠️ ' + e.message)
+      setAiBusy(false)
+    }
+  }
+
   const handleAiVideo = async () => {
     if (!aiPrompt.trim()) {
       setAiStatus('⚠️ Write a prompt describing the video first.')
@@ -650,6 +719,10 @@ export default function Home() {
 
             <button onClick={handleAiStory} disabled={aiBusy} className={styles.generateButton}>
               {aiBusy ? (<><span className={styles.spinner}></span>Making your video…</>) : '🎬 Generate Video (AI + voices)'}
+            </button>
+
+            <button onClick={handlePremiumTalk} disabled={aiBusy} className={styles.analyzeButton}>
+              {aiBusy ? (<><span className={styles.spinner}></span>Making talking clip…</>) : '🎤 Premium Talking Clip — characters really speak (~8s, ~$3–6)'}
             </button>
 
             <div className={styles.creditRow}>
