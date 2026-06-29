@@ -69,3 +69,27 @@ export async function POST(request) {
     return Response.json({ message: 'AI video failed.', error: e.message }, { status: 500 })
   }
 }
+
+// Proxy a fal-hosted clip through our own origin so the browser can draw it to a
+// canvas (cross-origin video would taint the canvas and break recording).
+const ALLOWED_HOST = /(^|\.)fal\.(media|run|ai)$/
+export async function GET(request) {
+  try {
+    const u = new URL(request.url).searchParams.get('url')
+    if (!u) return new Response('missing url', { status: 400 })
+    let host
+    try { host = new URL(u).hostname } catch { return new Response('bad url', { status: 400 }) }
+    if (!ALLOWED_HOST.test(host)) return new Response('forbidden host', { status: 403 })
+    const r = await fetch(u)
+    if (!r.ok) return new Response('upstream error', { status: 502 })
+    return new Response(r.body, {
+      status: 200,
+      headers: {
+        'Content-Type': r.headers.get('Content-Type') || 'video/mp4',
+        'Cache-Control': 'no-store',
+      },
+    })
+  } catch (e) {
+    return new Response('proxy error', { status: 500 })
+  }
+}

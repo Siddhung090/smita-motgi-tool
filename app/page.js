@@ -377,6 +377,36 @@ export default function Home() {
   }
 
   // Real text-to-video via fal.ai (paid). Submits the job, then polls until ready.
+  // Multi-clip AI story: one AI clip per line of the story + voices, stitched.
+  const handleAiStory = async () => {
+    if (!textContent.trim()) {
+      setAiStatus('⚠️ Write your story (the dialogue lines) in the "Your Story/Content" box above first.')
+      return
+    }
+    setAiBusy(true)
+    setAiStatus('Starting AI story… this can take 10–20 minutes and costs a few cents per line.')
+    try {
+      const { createAiStoryVideo } = await import('./lib/aiStoryVideo')
+      const blob = await createAiStoryVideo({
+        script: textContent,
+        style: aiPrompt,
+        aspect: aiAspect,
+        model: aiModel || undefined,
+        character: characterName,
+        onStatus: setAiStatus,
+      })
+      const url = URL.createObjectURL(blob)
+      setVideos((prev) => [
+        { id: Date.now(), title: videoTitle || 'AI Story', character: 'AI', date: new Date().toLocaleDateString(), url },
+        ...prev,
+      ])
+      setAiStatus('✅ AI story done! See it in Recent Videos.')
+    } catch (e) {
+      setAiStatus('⚠️ ' + e.message)
+    }
+    setAiBusy(false)
+  }
+
   const handleAiVideo = async () => {
     if (!aiPrompt.trim()) {
       setAiStatus('⚠️ Write a prompt describing the video first.')
@@ -753,8 +783,18 @@ export default function Home() {
                 onChange={(e) => setAiModel(e.target.value)}
               />
               <button onClick={handleAiVideo} disabled={aiBusy} className={styles.analyzeButton}>
-                {aiBusy ? (<><span className={styles.spinner}></span>Generating AI video…</>) : '🎬 Generate AI Video'}
+                {aiBusy ? (<><span className={styles.spinner}></span>Generating AI video…</>) : '🎬 Generate AI Video (one short clip)'}
               </button>
+              <button onClick={handleAiStory} disabled={aiBusy} className={styles.generateButton}>
+                {aiBusy ? (<><span className={styles.spinner}></span>Building AI story…</>) : '🎞️ AI Story Video (your story + voices, 30–60s, paid)'}
+              </button>
+              <p className={styles.hint}>
+                The box above = the character &amp; style (e.g. “cute brown bear and white
+                panda, 2D cartoon, Indian setting”). The lines of your <strong>Story</strong> at
+                the top become the dialogue. One AI clip is made per line, voices are added, and
+                they’re stitched into a 30–60s video. Costs ~$0.30–$1+ and takes 10–20 min; the
+                character may look a bit different between clips.
+              </p>
               {aiStatus && <div className={styles.statusMessage}>{aiStatus}</div>}
             </div>
 
