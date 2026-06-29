@@ -96,15 +96,20 @@ export async function POST(request) {
         `(You cannot watch the video; treat the link only as a hint about the desired style/topic. Do not invent specific facts from it.)`
     }
 
+    // Simple, model-agnostic JSON output (works on Haiku/Sonnet/Opus) — ask for
+    // raw JSON and parse it, instead of beta structured-output/thinking params.
+    const jsonInstruction =
+      '\n\nRespond with ONLY a single valid JSON object (no markdown, no code fences) with these keys:\n' +
+      '{ "suggestedTitle": string, "summary": string, "tone": string, ' +
+      '"character": { "name": string, "appearance": string, "personality": string, "voiceStyle": string }, ' +
+      '"script": string, "scenes": [ { "beat": string, "narration": string, "visual": string, ' +
+      '"speaker": string, "emotion": string, "setting": string, "prop": string, "action": string } ] }\n' +
+      'Make 4-7 scenes. "narration" = the spoken line; "visual" = a vivid one-line description of what is on screen for that line.'
+
     const response = await client.messages.create({
       model: MODEL,
-      max_tokens: 4000,
-      thinking: { type: 'adaptive' },
-      output_config: {
-        effort: 'medium',
-        format: { type: 'json_schema', schema: ANALYSIS_SCHEMA },
-      },
-      system: SYSTEM_PROMPT,
+      max_tokens: 3000,
+      system: SYSTEM_PROMPT + jsonInstruction,
       messages: [{ role: 'user', content: userContent }],
     })
 
@@ -120,17 +125,22 @@ export async function POST(request) {
       return Response.json({ message: 'No analysis was returned. Please try again.' }, { status: 502 })
     }
 
-    const analysis = JSON.parse(textBlock.text)
+    // Be forgiving: strip code fences / grab the first {...} block, then parse.
+    let raw = textBlock.text.trim().replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim()
+    const first = raw.indexOf('{')
+    const last = raw.lastIndexOf('}')
+    if (first > 0 || last < raw.length - 1) raw = raw.slice(first, last + 1)
+    const analysis = JSON.parse(raw)
     return Response.json({ success: true, analysis }, { status: 200 })
   } catch (error) {
     if (error instanceof Anthropic.AuthenticationError) {
-      return Response.json({ message: 'Invalid ANTHROPIC_API_KEY.' }, { status: 401 })
+      return Response.json({ message: 'Invalid ANTHROPIC_API_KEY — check the key on Render.' }, { status: 401 })
     }
     if (error instanceof Anthropic.RateLimitError) {
       return Response.json({ message: 'Rate limited — please try again in a moment.' }, { status: 429 })
     }
     return Response.json(
-      { message: 'Failed to analyze story.', error: error.message },
+      { message: 'Story-writer error: ' + (error.message || 'unknown'), error: error.message },
       { status: 500 }
     )
   }
