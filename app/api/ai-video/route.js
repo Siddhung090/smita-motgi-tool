@@ -5,8 +5,8 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 // Any fal.ai text-to-video model id works; override per request or via env.
-// Find ids at https://fal.ai/models (e.g. fal-ai/kling-video/..., fal-ai/wan/...).
-const DEFAULT_MODEL = process.env.FAL_VIDEO_MODEL || 'fal-ai/kling-video/v2/master/text-to-video'
+// Default is a CHEAP model for testing; pick others at https://fal.ai/models.
+const DEFAULT_MODEL = process.env.FAL_VIDEO_MODEL || 'fal-ai/ltx-video'
 
 const asText = (v) => (typeof v === 'string' ? v : v ? JSON.stringify(v) : '')
 
