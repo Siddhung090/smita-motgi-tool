@@ -381,7 +381,8 @@ export default function Home() {
   // Real text-to-video via fal.ai (paid). Submits the job, then polls until ready.
   // Multi-clip AI story: one AI clip per line of the story + voices, stitched.
   // Rough cost estimate (fal can't be queried with an inference-scoped key).
-  const EST_PER_CLIP = 0.05
+  // Calibrated to observed spend (~$0.02–0.025 per 5s ltx-video clip).
+  const EST_PER_CLIP = 0.025
   const aiClips = Math.max(1, Math.min(12, Math.round(aiLength / 5)))
   const estCost = aiClips * EST_PER_CLIP
 
